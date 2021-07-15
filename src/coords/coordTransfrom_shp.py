@@ -91,5 +91,5 @@ def traj_points_to_line( df_tra, df_trip, plate, save = False ):
 
 if __name__ == '__main__':
     # a = gpd.read_file('../trajectory_related/input/Futian_boundary_wgs.shp')
-    df_to_gdf_points(trip)
+    # df_to_gdf_points(trip)
     pass
