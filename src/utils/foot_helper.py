@@ -38,12 +38,13 @@ def relation_bet_point_and_line( point, line ):
         line ([x0, y0, x1, y1]): line coordiantions
 
     Returns:
-        [float]: the realtion between point and the line
+        [float]: the realtion between point and the line (起点 < 0 <= 线段中 <= 1 < 终点)
     """
     pqx = line[2] - line[0]
     pqy = line[3] - line[1]
     dx  = point[0]- line[0]
     dy  = point[1]- line[1]
+    
     # 线段长度的平方
     d = pow(pqx,2) + pow(pqy,2) 
     # 向量 点积 pq 向量（p相当于A点，q相当于B点，pt相当于P点）
@@ -52,13 +53,12 @@ def relation_bet_point_and_line( point, line ):
     flag = 1
     if(d>0): 
         t = t/d
-        # flag： 起点 < 0 <= 线段中 <= 1 < 终点
         flag = t
 
     return flag
 
 
-def cal_foot_point_on_line( point: Point, line: LineString, foot=True, ratio_thres=.0):
+def cal_foot_point_on_polyline( point: Point, line: LineString, foot=True, ratio_thres=.0):
     """caculate the foot point is on the line or not
 
     Args:

@@ -6,7 +6,11 @@
 
 2. 轨迹的速度/时间约束。基于时空分析，构建候选图，从中确定最佳匹配路径。
 
-![效果示意图](.fig/map_matching.png)
+总体效果图
+![效果示意图](.fig/map_matching_futian.png)
+
+分层示意图
+![分层示意图](.fig/map_matching.png)
 
 ## Ref
 

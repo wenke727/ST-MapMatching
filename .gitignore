@@ -6,8 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
-# Distribution / packaging
+# Others
+.DS_Store
+debug
 cache
+
+# Distribution / packaging
 rsrc
 input
 .Python

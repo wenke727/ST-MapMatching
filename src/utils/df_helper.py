@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point
 from haversine import haversine, Unit
@@ -34,7 +35,16 @@ def linestring_length(df:gpd.GeoDataFrame, add_to_att=False, key='length'):
     return dis
 
 
-def coords_pair_dist(o:Point, d:Point):
-    return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
-
+def coords_pair_dist(o, d, xy=True):
+    if isinstance(o, Point) and isinstance(d, Point):
+        return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
+    
+    if (isinstance(o, tuple) and isinstance(d, tuple)) or \
+       (isinstance(o, list) and isinstance(d, list)):
+        if xy:
+            return haversine(o[::-1], d[::-1], unit=Unit.METERS)
+        else:
+            return haversine(o, d, unit=Unit.METERS)
+    
+    return np.inf
 
