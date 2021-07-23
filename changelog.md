@@ -1,10 +1,34 @@
 # Changelog
 
-## 待解决
+## [Unreleased]
 
-## [1.0.03] - 2021-07-?
+- bidirectional A* algm
+
+## [1.0.03] - 2021-07-22
 
 ### Added
+
+- trajectory_segmentation
+- Douglas-Peucker / trajectory segmentation (Batched Compression Techniques)
+- load path_set of direction API for matching testing.
+- `mathing.py`
+  - add visulization
+  - completed the pano matching frame
+- `geo_helper.py`
+  - foot related functions
+  - edge_parallel_offset
+    - Add judgment conditions: `is_ring`
+  - io related functions: load/upload postgis
+- `geo_plot_helper.py`
+  - adaptive_zoom_level
+- `log_helper.py`
+  - log to file/std
+
+### Changed
+
+- DigraphOSM
+  - Encapsulated it as a separated module.
+  - `add_reverse_edge` add `is_ring` judgement condition to determine add the reverse edge or not.
 
 ## [1.0.02] - 2021-07-19
 

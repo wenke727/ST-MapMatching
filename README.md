@@ -14,6 +14,21 @@
 
 ## Ref
 
+- matching
 [Map-Matching for Low-Sampling-Rate GPS Trajectories](https://www.microsoft.com/en-us/research/publication/map-matching-for-low-sampling-rate-gps-trajectories/)
 [Map-Matching for Low-Sampling-Rate GPS Trajectories 中文解读](https://blog.csdn.net/qq_43281895/article/details/103145327)
 [Matlab算法案例--- 基于隐马尔科夫模型(HMM)的地图匹配(Map-Matching)](https://zhuanlan.zhihu.com/p/108804163)
+
+- batched compression algorithm
+[轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
+[基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)
+
+### 需要恢复的文件
+
+- geo_helper
+    from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
+    get_vertical_dist
+
+    from utils.geo_helper import coords_pair_dist,cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis
+
+- adaptive_zoom

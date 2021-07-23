@@ -6,6 +6,7 @@ def merge_intervals(intervals):
         
     return res
 
+
 def merge_intervals_helper(intervals, start, end, height=None):
     """merge intervals
 
@@ -28,6 +29,7 @@ def merge_intervals_helper(intervals, start, end, height=None):
 
         return  
     intervals.append([start, end, height])
+
 
 def insert_intervals(intervals, newInterval):
     res = []

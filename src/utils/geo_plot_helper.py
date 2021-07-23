@@ -10,6 +10,11 @@ plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 from ImageRelatedProcess import clip_background, merge_tiles
 import GoogleMapTile_V3 as tile
 
+
+def adaptive_zoom_level(max_, min_):
+    
+    return    
+
 def map_visualize(df: gpd.GeoDataFrame, 
                   lyrs='s', 
                   scale=0.5, 

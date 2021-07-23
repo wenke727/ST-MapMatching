@@ -2,402 +2,29 @@
 import os
 import sys
 import time
-import math
 import copy
-import heapq
 import warnings
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from tqdm import tqdm
 import geopandas as gpd
-from collections import deque
 import matplotlib.pyplot as plt
-from haversine import haversine, Unit
 from shapely.geometry import Point, LineString, box
 
 from utils.classes import Digraph
 from utils.geo_plot_helper import map_visualize
-from coords.coordTransfrom_shp import coord_transfer
-from utils.df_helper import gdf_to_geojson, df_query, coords_pair_dist
 from utils.interval_helper import merge_intervals
-from utils.foot_helper import cal_foot_point_on_polyline
 from utils.pickle_helper import PickleSaver
 from load_step import df_path, split_line_to_points
+from DigraphOSM import Digraph_OSM, load_net_helper
+from utils.geo_helper import coords_pair_dist,cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis
 
 from setting import filters as way_filters
-from setting import DIS_FACTOR, DEBUG_FOLDER, SZ_BBOX, GBA_BBOX
+from setting import DIS_FACTOR, DEBUG_FOLDER, SZ_BBOX
 
 warnings.filterwarnings('ignore')
 
-
-#%%
-""" Graph class """
-class Digraph_OSM(Digraph):
-    def __init__(self, 
-                 bbox=None,
-                 xml_fn='../input/futian.xml', 
-                 road_info_fn='../input/osm_road_speed.xlsx', 
-                 combine_link=True,
-                 reverse_edge=True,
-                 *args, **kwargs):
-        assert not(bbox is None and xml_fn is None), "Please define one of the bbox or the xml path."
-        if bbox is not None:
-            xml_fn = f"../cache/osm_{'_'.join(map(str, bbox))}.xml"
-            self.download_map(xml_fn, bbox, True)
-        
-        self.df_nodes, self.df_edges = self.get_road_network(xml_fn, road_info_fn)
-        self.node_dis_memo = {}
-        self.route_planning_memo = {}
-        super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
-
-        self.df_edges.set_crs('EPSG:4326', inplace=True)
-        self.df_nodes.set_crs('EPSG:4326', inplace=True)
-                
-        if combine_link:
-            self.df_edges = self.combine_rids()
-            self.df_edges.reset_index(drop=True, inplace=True)
-
-        if reverse_edge:
-            self.df_edges = self.add_reverse_edge(self.df_edges)
-            self.df_edges.reset_index(drop=True, inplace=True)
-        
-        if combine_link or reverse_edge:
-            # self.df_nodes = self.df_nodes.loc[ np.unique(np.hstack((self.df_edges.s.values, self.df_edges.e.values))),:]
-            super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
-            
-
-    def download_map(self, fn, bbox, verbose=False):
-        """Download OSM map of bbox from Internet.
-
-        Args:
-            fn (function): [description]
-            bbox ([type]): [description]
-            verbose (bool, optional): [description]. Defaults to False.
-        """
-        if os.path.exists(fn):
-            return
-
-        import requests
-        if verbose:
-            print("Downloading {}".format(fn))
-        
-        if isinstance(bbox, list) or isinstance(bbox, np.array):
-            bbox = ",".join(map(str, bbox))
-
-        url = f'http://overpass-api.de/api/map?bbox={bbox}'
-        r = requests.get(url, stream=True)
-        with open(fn, 'wb') as ofile:
-            for chunk in r.iter_content(chunk_size=1024):
-                if chunk:
-                    ofile.write(chunk)
-
-        if verbose:
-            print("Downloaded {} success.\n".format(fn))
-
-        return True
-
-
-    def get_road_network(self, 
-                         fn, 
-                         fn_road, 
-                         in_sys='wgs',
-                         out_sys='wgs', 
-                         signals=True,
-                         road_type_filter=way_filters['auto']['highway'],
-                         keep_cols=['name', 'rid', 'order', 'road_type', 'lanes', 's', 'e',  'dist', 'oneway', 'maxspeed', 'geometry']
-                         ):
-        import xml
-        dom      = xml.dom.minidom.parse(fn)
-        root     = dom.documentElement
-        nodelist = root.getElementsByTagName('node')
-        waylist  = root.getElementsByTagName('way')
-
-        # nodes
-        nodes = []
-        for node in tqdm(nodelist, 'Parse nodes: \t'):
-            pid = node.getAttribute('id')
-            taglist = node.getElementsByTagName('tag')
-            info = {'pid': int(pid),
-                    'y':float(node.getAttribute('lat')), 
-                    'x':float(node.getAttribute('lon'))}
-            
-            for tag in taglist:
-                if tag.getAttribute('k') == 'traffic_signals':
-                    info['traffic_signals'] = tag.getAttribute('v')
-            
-            nodes.append(info)
-                    
-        nodes = gpd.GeoDataFrame(nodes)
-        nodes.loc[:, 'geometry'] = nodes.apply(lambda i: Point(i.x, i.y), axis=1)
-        nodes.set_index('pid', inplace=True)
-
-        if in_sys != out_sys:
-            nodes = coord_transfer(nodes, in_sys, out_sys)
-            nodes.loc[:,['x']], nodes.loc[:,['y']] = nodes.geometry.x, nodes.geometry.y
-
-        # traffic_signals
-        self.traffic_signals = nodes[~nodes.traffic_signals.isna()].index.unique()
-        
-        # edges
-        edges = []
-        for way in tqdm(waylist, 'Parse ways: \t'):
-            taglist = way.getElementsByTagName('tag')
-            info = { tag.getAttribute('k'): tag.getAttribute('v') for tag in taglist }
-
-            if 'highway' not in info or info['highway'] in road_type_filter:
-                continue
-            
-            info['rid'] = int(way.getAttribute('id'))
-            ndlist  = way.getElementsByTagName('nd')
-            nds = []
-            # TODO: 针对单向路段，需要增加其反向的情况
-            for nd in ndlist:
-                nd_id = nd.getAttribute('ref')
-                nds.append( nd_id )
-            for i in range( len(nds)-1 ):
-                edges.append( { 'order': i, 's':nds[i], 'e':nds[i+1], 'road_type': info['highway'], **info} )
-
-        edges = pd.DataFrame( edges )
-        edges.loc[:, ['s','e']] = pd.concat((edges.s.astype(np.int), edges.e.astype(np.int)), axis=1)
-
-        edges = edges.merge( nodes[['x','y']], left_on='s', right_index=True ).rename(columns={'x':'x0', 'y':'y0'}) \
-                     .merge( nodes[['x','y']], left_on='e', right_index=True ).rename(columns={'x':'x1', 'y':'y1'})
-        edges = gpd.GeoDataFrame( edges, geometry = edges.apply( lambda i: LineString( [[i.x0, i.y0], [i.x1, i.y1]] ), axis=1 ) )
-        edges.loc[:, 'dist'] = edges.apply(lambda i: haversine((i.y0, i.x0), (i.y1, i.x1), unit=Unit.METERS), axis=1)
-
-        # nodes filter
-        ls = np.unique(np.hstack((edges.s.values, edges.e.values)))
-        nodes = nodes.loc[ls,:]
-
-        edges.sort_values(['rid', 'order'], inplace=True)
-
-        if fn_road:
-            road_speed = pd.read_excel(fn_road)[['road_type', 'v']]
-            edges = edges.merge( road_speed, on ='road_type' )
-        
-        return nodes, edges[keep_cols]
-
-
-    def add_reverse_edge(self, df_edges):
-        """Add reverse edge.
-
-        Args:
-            df_edges (gpd.GeoDataFrame): The edge file parsed from OSM.
-        Check:
-            rid = 34900355
-            net.df_edges.query( f"rid == {rid} or rid == -{rid}" ).sort_values(['order','rid'])
-        """
-        def _juedge_oneway(oneway_flag):
-            # https://wiki.openstreetmap.org/wiki/Key:oneway
-            if oneway_flag == 'yes' or oneway_flag == '1' or oneway_flag == True:
-                flag = True
-            elif oneway_flag == '-1':
-                flag = True
-                # way.is_reversed = True
-            elif oneway_flag == 'no' or oneway_flag == '0' or oneway_flag == False:
-                flag = False
-            elif oneway_flag in ['reversible', 'alternating']:
-                # TODO: reversible, alternating: https://wiki.openstreetmap.org/wiki/Tag:oneway%3Dreversible
-                flag = False
-            else:
-                flag = False
-                # printlog(f'new maxspeed type detected at way {way.osm_way_id}, {tags["oneway"]}', 'warning')
-
-            return flag
-
-        df_edges.oneway = df_edges.oneway.fillna('no').apply(_juedge_oneway)
-        df_edge_rev = df_edges.query('oneway == False')
-
-        # df_edge_rev.loc[:, 'rid']      = -df_edge_rev.rid
-        df_edge_rev.loc[:, 'order']    = -df_edge_rev.order - 1
-        df_edge_rev.loc[:, 'geometry'] =  df_edge_rev.geometry.apply( lambda x: LineString(x.coords[::-1]) )
-        df_edge_rev.rename(columns={'s':'e', 'e':'s'}, inplace=True)
-        df_tmp = df_edges.append(df_edge_rev)
-
-        return df_tmp
-
-    def get_intermediate_point(self):
-        """出入度为1的路网，逐一去识别路段，然后更新属性
-
-        Returns:
-            [type]: [description]
-        """
-        return self.degree.query( "indegree == 1 and outdegree == 1" ).index.unique().tolist()
-    
-
-    def combine_links_of_rid(self, rid, omit_rids, df_edges, plot=False, save_folder=None):
-        """Combine OSM link.
-
-        Args:
-            rid (int): The id of link in OSM.
-            omit_rids (df): Subset of df_edges, the start point shoule meet: 1) only has 1 indegree and 1 outdegree; 2) not the traffic_signals point.
-            df_edges (df, optional): [description]. Defaults to net.df_edges.
-
-        Returns:
-            pd.DataFrame: The links after combination.
-        
-        Example:
-            `new_roads = combine_links_of_rid(rid=25421053, omit_rids=omit_rids, plot=True, save_folder='../cache')`
-        """
-        new_roads = df_edges.query(f"rid == @rid").set_index('order')
-        combine_orders = omit_rids.query(f"rid == @rid").order.values
-        combine_seg_indxs = merge_intervals([[x-1, x] for x in combine_orders if x > 0])
-
-        drop_index = []
-        for start, end, _ in combine_seg_indxs:
-            segs = new_roads.query(f"{start} <= order <= {end}")
-            pids = np.append(segs.s.values, segs.iloc[-1]['e'])
-
-            new_roads.loc[start, 'geometry'] = LineString([[self.node[p]['x'], self.node[p]['y']] for p in pids])
-            new_roads.loc[start, 'dist'] = segs.dist.sum()
-            new_roads.loc[start, 'e'] = segs.iloc[-1]['e']
-
-            drop_index += [ i for i in range(start+1, end+1) ]
-
-        new_roads.drop(index=drop_index, inplace=True)
-        new_roads.reset_index(inplace=True)
-
-        if save_folder is not None:
-            gdf_to_geojson(new_roads, os.path.join(save_folder, f"road_{rid}_after_combination.geojson"))
-        
-        if plot:
-            new_roads.plot()
-        
-        return new_roads
-
-
-    def combine_rids(self, ):
-        omit_pids = [ x for x in self.get_intermediate_point() if x not in self.traffic_signals ]
-        omit_records = self.df_edges.query( f"s in @omit_pids" )
-        omit_rids = omit_records.rid.unique().tolist()
-        keep_records = self.df_edges.query( f"rid not in @omit_rids" )
-
-        res = []
-        for rid in tqdm(omit_rids, 'Combine links: \t'):
-            res.append(self.combine_links_of_rid(rid, omit_records, self.df_edges))
-
-        comb_rids = gpd.GeoDataFrame(pd.concat(res))
-        comb_rids = keep_records.append(comb_rids).reset_index()
-
-        return comb_rids
-
-
-    def cal_nodes_dis(self, o, d):
-        assert o in self.node and d in self.node, "Check the input o and d."
-        if (o, d) in self.node_dis_memo:
-            return self.node_dis_memo[(o, d)]
-        
-        return haversine((self.node[o]['y'], self.node[o]['x']), (self.node[d]['y'], self.node[d]['x']), unit=Unit.METERS)
-
-
-    def a_satr(self, origin, dest, max_layer=500, verbose=False, plot=False):
-        """Route planning by A star algm
-
-        Args:
-            origin ([type]): [description]
-            dest ([type]): [description]
-            verbose (bool, optional): [description]. Defaults to False.
-            plot (bool, optional): [description]. Defaults to False.
-
-        Returns:
-            dict: The route planning result with path, cost and status.
-            status_dict = {-1: 'unreachable'}
-        """
-        if (origin, dest) in self.route_planning_memo:
-            res = self.route_planning_memo[(origin, dest)]
-            return res
-        
-        if origin not in self.graph or dest not in self.graph:
-            print(f"Edge({origin}, {dest})\
-                {', origin not in graph' if origin not in self.graph else ', '}\
-                {', dest not in graph' if dest not in self.graph else ''}")
-            return None
-
-        frontier = [(0, origin)]
-        came_from, distance = {}, {}
-        came_from[origin] = None
-        distance[origin] = 0
-
-        # TODO: add `visited`
-        layer = 0
-        while frontier:
-            _, cur = heapq.heappop(frontier)
-            if cur == dest or layer > max_layer:
-                break
-            
-            for nxt in self.graph[cur]:
-                if nxt not in self.graph:
-                    continue
-                
-                new_cost = distance[cur] + self.edge[(cur, nxt)]
-                if nxt not in distance or new_cost < distance[nxt]:
-                    distance[nxt] = new_cost
-                    if distance[nxt] > 10**4:
-                        continue
-
-                    heapq.heappush(frontier, (new_cost+self.cal_nodes_dis(dest, nxt), nxt) )
-                    came_from[nxt] = cur
-            layer += 1
-
-        if cur != dest:
-            res = {'path': None, 'cost': np.inf, "status": -1} 
-            self.route_planning_memo[(origin, dest)] = res
-            return res
-
-        # reconstruct the route
-        route, queue = [dest], deque([dest])
-        while queue:
-            node = queue.popleft()
-            # assert node in came_from, f"({origin}, {dest}), way to {node}"
-            if came_from[node] is None:
-                continue
-            route.append(came_from[node])
-            queue.append(came_from[node])
-        route = route[::-1]
-
-        res = {'path':route, 'cost': distance[dest], 'status':1}
-        self.route_planning_memo[(origin, dest)] = res
-
-        if plot:
-            path_lst = gpd.GeoDataFrame([ { 's': route[i], 'e': route[i+1]} for i in range(len(route)-1) ])
-            ax = path_lst.merge(self.df_edges, on=['s', 'e']).plot()
-                    
-        return res
-
-
-    @property
-    def df_node_with_degree(self,):
-        return self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
-
-
-def load_graph_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, cache_folder='../cache', convert_to_geojson=False):
-    """ parse xml to edge and node with/without combiantion"""
-    if xml_fn is not None:
-        net = Digraph_OSM(xml_fn=xml_fn, combine_link=combine_link)
-        return net
-    
-    """ Read Digraph_OSM object from file """
-    assert isinstance(bbox, list), 'Check input bbox'
-    
-    bbox_str = '_'.join(map(str, bbox))
-    fn = os.path.join(cache_folder, f"net_{bbox_str}.pkl")
-    s = PickleSaver()
-    
-    if os.path.exists(fn) and not overwrite:
-        net = s.read(fn)
-    else:
-        net = Digraph_OSM(bbox=bbox, combine_link=combine_link)
-        s.save(net, fn)
-        if convert_to_geojson:
-            gdf_to_geojson(net.df_edges, f'../cache/edges_{bbox_str}')
-            gdf_to_geojson(net.df_nodes, f'../cache/nodes_{bbox_str}')
-    
-    return net
-
-
-net = load_graph_helper(xml_fn='../input/futian.xml', combine_link=True)
-# net = load_graph_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=False)
 
 #%%
 
@@ -417,7 +44,7 @@ def get_candidates(traj, edges, georadius=20, top_k=5, dis_factor=DIS_FACTOR, fi
 
     Args:
         traj (geodataframe): Trajectory T = p1 -> p2 -> ... -> pn
-        edges (geodataframe): The graph edge.
+        edges (geodataframe): The graph edge. In this model, it is the same with `net.df_edges`.
         georadius (int, optional): [description]. Defaults to 20.
         dis_factor (float, optional): Factor of change lonlat to meter. Defaults to 1/110/1000.
         verbose (bool, optional): [description]. Defaults to True.
@@ -429,7 +56,7 @@ def get_candidates(traj, edges, georadius=20, top_k=5, dis_factor=DIS_FACTOR, fi
         df_candidates = copy.deepcopy(df)
         origin_size = df_candidates.shape[0]
 
-        df_candidates_new = df_candidates.merge(net.df_edges, right_index=True, left_on='rindex')\
+        df_candidates_new = df_candidates.merge(edges, right_index=True, left_on='rindex')\
                         .sort_values(['pid', 'dist_to_line'], ascending=[True, True])\
                         .groupby(['pid', 'rid'])\
                         .head(1)[['pid', 'rindex', 'rid', 's', 'e','dist_to_line']]
@@ -497,7 +124,8 @@ def cal_relative_offset(node:Point, polyline:LineString, verbose=False):
         ```
         from shapely import wkt
         node = wkt.loads('POINT (114.051228 22.539597)')
-        linestring = wkt.loads('LINESTRING (114.0516508 22.539516, 114.0515715 22.5395317, 114.0515222 22.5395533, 114.0514758 22.5395805, 114.0514441 22.5396039, 114.0514168 22.5396293, 114.0513907 22.5396616, 114.0513659 22.5396906, 114.0513446 22.5397236, 114.0512978 22.5398214)')
+        linestring = wkt.loads('LINESTRING (114.0516508 22.539516, 114.0515715 22.5395317, 114.0515222 22.5395533, 114.0514758 22.5395805, 
+        114.0514441 22.5396039, 114.0514168 22.5396293, 114.0513907 22.5396616, 114.0513659 22.5396906, 114.0513446 22.5397236, 114.0512978 22.5398214)')
         cal_relative_offset(node, linestring)
         ```
     """
@@ -550,7 +178,7 @@ def linestring_combine_helper(path, net):
     return LineString(res)
 
 
-def cal_trans_prob(df_candidates, net):
+def cal_trans_prob(df_candidates, traj, net):
     df_candidates.loc[:, 'offset'] = df_candidates.apply(lambda x: 
         cal_relative_offset(traj.loc[x.pid].geometry, net.df_edges.loc[x.rindex].geometry), axis=1 )
     
@@ -566,7 +194,7 @@ def cal_trans_prob(df_candidates, net):
         graph_t.append(a.merge(b, on='tmp', suffixes=["_0", '_1']).drop(columns='tmp') )
 
     graph_t = pd.concat(graph_t).reset_index(drop=True)
-    graph_t.loc[:, 'shortest_path'] = graph_t.apply(lambda x: net.a_satr(x.e_0, x.s_1, plot=False), axis=1)
+    graph_t.loc[:, 'shortest_path'] = graph_t.apply(lambda x: net.a_star(x.e_0, x.s_1, plot=False), axis=1)
     graph_t.loc[:, 'd_sht']   = graph_t.shortest_path.apply(lambda x: x['cost'] if x is not None else np.inf )
     graph_t.loc[:, 'd_euc']   = graph_t.apply(lambda x: coords_pair_dist(traj.loc[x.pid_0].geometry, traj.loc[x.pid_1].geometry), axis=1)
     graph_t.loc[:, 'd_step0'] = graph_t.apply(lambda x: net.cal_nodes_dis(x.s_0, x.e_0), axis=1)
@@ -638,7 +266,7 @@ def get_whole_path(rList, graph_t, net, plot=False):
     return path[['index', 's', 'e', 'name', 'rid', 'lanes', 'geometry']]
 
 
-def st_matching(traj, net, plot=True, debug=False):
+def st_matching(traj, net, plot=True, save_fn=None, debug_in_levels=False, plot_candidate=False, satellite=False):
     # step 1: candidate prepararation
     if traj.shape[0] == 0:
         return None
@@ -646,15 +274,19 @@ def st_matching(traj, net, plot=True, debug=False):
         #TODO The cloesest edge.
         return 
     
-    df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=True, verbose=False, filter=True)
+    df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=plot_candidate, verbose=False, filter=True)
     if df_candidates is None:
         return None
+    
+    if df_candidates.pid.nunique() <= 1:
+        print('Only one level has candidates.')
+        return
 
     # step 2.1: Spatial analysis, obervation prob
     cal_observ_prob(df_candidates)
 
     # step 2.2: Spatial analysis, transmission prob
-    tList, graph_t = cal_trans_prob(df_candidates, net)
+    tList, graph_t = cal_trans_prob(df_candidates, traj, net)
 
     # TODO step 3: temporal analysis
 
@@ -662,19 +294,35 @@ def st_matching(traj, net, plot=True, debug=False):
     rList = find_matched_sequence(graph_t, df_candidates, tList)
     path = get_whole_path(rList, graph_t, net, False)
 
-    if debug:
-        matching_debug(tList, graph_t, net, debug)
+    if debug_in_levels:
+        matching_debug(tList, graph_t, net, debug_in_levels)
 
     if plot:
-        _, ax = map_visualize(traj, alpha=.5)
-        # traj.plot(ax=ax, marker = '*', color='red', zorder=9, label= 'Point')
-        # edge_lst = net.df_edges.sindex.query(box(*traj.total_bounds), predicate='intersects')
-        # net.df_edges.loc[edge_lst].plot( color='black',linestyle='--', linewidth=.8, alpha=.8, label='Network' )
-        
+        # trajectory point
+        if satellite:
+            try:
+                _, ax = map_visualize(traj, alpha=.5, scale=.2, color='blue')
+            except:
+                ax = traj.plot(alpha=.5, color='blue')
+                ax.axis('off')       
+        else:
+            ax = traj.plot(alpha=.5, color='blue')
+            ax.axis('off')
+            
+        traj.head(1).plot(ax=ax, marker = '*', color='red', zorder=9, label= 'Start point')
+        # network
+        edge_lst = net.df_edges.sindex.query(box(*traj.total_bounds), predicate='intersects')
+        net.df_edges.loc[edge_lst].plot(ax=ax, color='black', linewidth=.8, alpha=.3, label='Network' )
+        # candidate
         net.df_edges.loc[df_candidates.rindex.values].plot(
-            ax=ax, label='Candidate', color='blue', linestyle='--', linewidth=.8,alpha=.8)
-        path.plot(ax=ax, label='Path', color='red', alpha=.8)
+            ax=ax, label='Candidates', color='blue', linestyle='--', linewidth=.8,alpha=.8)
+        # path
+        path.plot(ax=ax, label='Path', color='red', alpha=.5)
         plt.legend()
+        
+        if save_fn is not None:
+            plt.savefig(os.path.join(DEBUG_FOLDER, f'{save_fn}.jpg'), dpi=300)
+            plt.close()
     
     return path
 
@@ -759,7 +407,7 @@ def matching_debug(tList, graph_t, net, debug=True):
 
 
 def cos_similarity(self, path_, v_cal=30):
-    # TODO 
+    # TODO cos_similarity
     # path_ = [5434742616, 7346193109, 7346193114, 5434742611, 7346193115, 5434742612, 7346193183, 7346193182]
     seg = [[path_[i-1], path_[i]] for i in range(1, len(path_))]
     v_roads = pd.DataFrame(seg, columns=['s', 'e']).merge(
@@ -771,47 +419,42 @@ def cos_similarity(self, path_, v_cal=30):
     return cos
 
 
+"""" For test """
+def code_testing_single(id, net, debuf_with_step=False):
+    traj = split_line_to_points(df_path.iloc[id].geometry, compress=True, config={'dist_max': 8, 'verbose': True})
 
-# %%
-"""
-# TODO 
-    sampleing points; 
-    trim the first point and the last point; 
-    sequence coordination of path
-"""
+    if not debuf_with_step:
+        st_matching(traj, net, plot=True, save_fn=id)
+    else:
+        # step 1: candidate prepararation
+        df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=True, verbose=False, filter=True)
 
-if True:
-    # st_matching(traj, net, False)
-    # error_lst = [ 37, 38, 40]
-    # planning_error = [43, 50, 56] 
-    # key_error = [64]
-    # uncontinous = [ 31, 40, 42,69, 76, 119] # 修改filter后解决问题
+        # step 2.1: Spatial analysis, obervation prob
+        cal_observ_prob(df_candidates)
 
-    idx = 37
-    traj = split_line_to_points(df_path.iloc[idx].geometry)
-    traj = traj[traj.index%1==0].reset_index(drop=True)
-
-    # step 1: candidate prepararation
-    df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=True, verbose=False, filter=True)
-
-    # step 2.1: Spatial analysis, obervation prob
-    cal_observ_prob(df_candidates)
-
-    # step 2.2: Spatial analysis, transmission prob
-    tList, graph_t = cal_trans_prob(df_candidates, net)
+        # step 2.2: Spatial analysis, transmission prob
+        tList, graph_t = cal_trans_prob(df_candidates, net)
 
 
-    # step 4: find matched sequence
-    rList = find_matched_sequence(graph_t, df_candidates, tList)
-    path = get_whole_path(rList, graph_t, net, True)
+        # step 4: find matched sequence
+        rList = find_matched_sequence(graph_t, df_candidates, tList)
+        path = get_whole_path(rList, graph_t, net, True)
 
-    graph_t
+        graph_t
+
+    return 
+
+
+def code_testing(start=0, end=100, debuf_with_step=False):
+    for id in tqdm( range(start, end) ):
+        traj = split_line_to_points(df_path.iloc[id].geometry, compress=True, config={'dist_max': 8, 'verbose': True})
+        _ = st_matching(traj, net, plot=True, save_fn=f"{id:03d}", satellite=True)
 
 
 #%%
 if __name__ == '__main__':
     """ a_star 最短路算法测试 """
-    # net.a_satr(1491845161, 1933843924, plot=True)
+    # net.a_star(1491845161, 1933843924, plot=True)
 
     """ test for cal_relative_offset """
     # pid, ridx = df_candidates.iloc[0]['pid'], df_candidates.iloc[0]['rindex']
@@ -823,14 +466,29 @@ if __name__ == '__main__':
     # for i in [1103, 979, 980, 981]:
     #     cal_relative_offset(node, net.df_edges.loc[i].geometry)
 
-
     """" matching plot debug helper """
     # matching_debug(tList, graph_t)
     # matching_debug_level(tList, graph_t, 3)
     # matching_debug_level(tList, graph_t, 2)
 
+    net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
 
     """ matching test"""
     traj = load_trajectory("../input/traj_0.geojson")
-    st_matching(traj, net, plot=True, debug=False)
+    st_matching(traj, net, plot=True)
 
+    # st_matching(traj, net, False)
+    # error_lst = [ 37, 38, 40]
+    # planning_error = [43, 50, 56] 
+    # key_error = [64]
+    # uncontinous = [ 31, 40, 42,69, 76, 119] # 修改filter后解决问题
+    # code_testing(65, 150)
+
+#%%
+# 42, 64 卫星瓦片请求失败
+# 15, 可能一条不存在的道路
+# 38 放大查看
+# 52 匝道处理
+# 143， 148
+
+#%%
