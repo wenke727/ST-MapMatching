@@ -23,12 +23,9 @@
 [轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
 [基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)
 
+- probability distribution
+  ![5, 10, 15, 20, 25]('.fig/observ_prob_distribution.png')
+
 ### 需要恢复的文件
-
-- geo_helper
-    from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
-    get_vertical_dist
-
-    from utils.geo_helper import coords_pair_dist,cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis
 
 - adaptive_zoom

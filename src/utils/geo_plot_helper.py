@@ -11,7 +11,8 @@ from ImageRelatedProcess import clip_background, merge_tiles
 import GoogleMapTile_V3 as tile
 
 
-def adaptive_zoom_level(max_, min_):
+def adaptive_zoom_level(distance, max_, min_):
+    # TODO
     
     return    
 

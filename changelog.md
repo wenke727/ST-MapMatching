@@ -4,11 +4,28 @@
 
 - bidirectional A* algm
 
+## [1.0.04] - 2021-07-24
+
+### Added
+
+- Digraph_OSM
+  - node_sequence_to_edge
+
+### Changed
+
+- `mathing.py`
+  - linestring_combine_helper
+    In `cal_trans_prob`, there is no need to obtain geometry.
+  - get_path
+    Reconstruct path according to the resualt of the  `find_matched_sequence`.
+  - the find best sequence: add the observ probility
+  - matching_debug_subplot
+    add observ prob, v, f details.
+
 ## [1.0.03] - 2021-07-22
 
 ### Added
 
-- trajectory_segmentation
 - Douglas-Peucker / trajectory segmentation (Batched Compression Techniques)
 - load path_set of direction API for matching testing.
 - `mathing.py`

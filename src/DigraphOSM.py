@@ -1,3 +1,4 @@
+#%%
 import os
 import xml
 import heapq
@@ -10,10 +11,9 @@ from xml.dom import minidom
 from collections import deque
 import matplotlib.pyplot as plt
 from haversine import haversine, Unit
-from shapely.geometry import Point, LineString, box, linestring
+from shapely.geometry import Point, LineString, box
 
 from utils.classes import Digraph
-from utils.geo_plot_helper import map_visualize
 from coords.coordTransfrom_shp import coord_transfer
 from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
 from utils.interval_helper import merge_intervals
@@ -21,11 +21,10 @@ from utils.pickle_helper import PickleSaver
 from utils.log_helper import LogHelper, logbook
 
 from setting import filters as way_filters
-from setting import SZ_BBOX, GBA_BBOX
+from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX
 
 warnings.filterwarnings('ignore')
 
-PCL_BBOX = [113.931914,22.573536, 113.944456,22.580613]
 
 g_log_helper = LogHelper(log_name='log.log', stdOutFlag=True)
 logger       = g_log_helper.make_logger(level=logbook.WARNING)
@@ -387,10 +386,30 @@ class Digraph_OSM(Digraph):
 
 
     def upload_topo_data_to_db(self, name):
-        gdf_to_postgis(self.df_edges, f'{name}_topo_osm_edge')
-        gdf_to_postgis(self.df_node_with_degree, f'{name}_topo_osm_node')
+        try:
+            gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
+            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_node')
+            return True
+        except:
+            if logger:
+                logger.error('upload data error.')
+        
+        return False
 
-        return
+
+    def node_sequence_to_edge(self, node_lst, on=['s', 'e'], attrs=['s', 'e', 'name', 'rid', 'road_type', 'geometry']):
+        """Convert the id sequence of nodes into an ordered edges. 
+
+        Args:
+            node_lst (list): The id sequence of nodes
+            on (list, optional): The column names of `origin` and `destination` to join on.. Defaults to ['s', 'e'].
+
+        Returns:
+            [type]: [description]
+        """
+        df =  gpd.GeoDataFrame([ {on[0]: node_lst[i], on[1]: node_lst[i+1]} for i in range(len(node_lst)-1) ])
+        
+        return df.merge(self.df_edges, on=on)[attrs]
 
 
 def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
@@ -420,7 +439,11 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
 
 if __name__ == '__main__':
     # net = load_net_helper(xml_fn='../input/futian.xml', combine_link=True)
-    net = load_net_helper(bbox=PCL_BBOX, combine_link=True, overwrite=False, two_way_offeset=True)
-    net.upload_topo_data_to_db('test_db')
-    # df_edge = net.df_edges
-    logger.warning('sucess')
+    net = load_net_helper(bbox=GBA_BBOX, combine_link=True, overwrite=False, two_way_offeset=True)
+    # net.upload_topo_data_to_db('gba')
+    # # df_edge = net.df_edges
+    # logger.warning('sucess')
+
+    net.a_star(1491845212, 1116467141)
+
+#%%

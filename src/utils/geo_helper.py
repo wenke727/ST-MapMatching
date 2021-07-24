@@ -20,6 +20,23 @@ def coords_pair_dist(o, d, xy=True):
     return np.inf
 
 
+""" convert helper """
+def geom_lst_to_gdf(lst):
+    """Convert geometry or geometry list to gdf.
+
+    Args:
+        lst (geometry|list(geometry)): The geometry or geometries.
+
+    Returns:
+        gpd.GeoDataFrame: The geodataframe.
+    """
+    
+    if not isinstance(lst, list):
+        lst = [lst]
+        
+    return gpd.GeoDataFrame( {'geometry':lst} )
+
+
 """ Point & LineString helper """
 def get_foot_point(point, line_p1, line_p2):
     """

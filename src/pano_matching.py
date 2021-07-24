@@ -10,11 +10,12 @@ from load_step import split_line_to_points
 from DigraphOSM import load_net_helper, Digraph_OSM
 from matching import st_matching, load_trajectory
 from setting import SZ_BBOX
+from utils.geo_helper import gdf_to_geojson
 
 net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
 
 #%%
-from utils.geo_helper import load_postgis
+from utils.geo_helper import gdf_to_geojson, load_postgis
 
 PCL_BBOX = [113.931914,22.573536, 113.944456,22.580613]
 
@@ -43,6 +44,9 @@ for id in tqdm(range(0, roads.shape[0])):
     plt.close()
 
 # %%
-net.df_edges[~net.df_edges.oneway].plot()
+# net.df_edges[~net.df_edges.oneway].plot()
 
 
+gdf_to_geojson(traj, '../input/traj_debug')
+
+# %%
