@@ -4,6 +4,25 @@
 
 - bidirectional A* algm
 
+## [1.0.05] - 2021-07-27
+
+### Added
+
+- Digraph_OSM
+  - Topo edge data: add `dir`
+
+### Changed
+
+- matching.py
+  - get_candidates
+    take `dir` into accounts.
+  - cal_relative_offset
+    Change calculation logic
+    - caculate the closest line
+    - caculate the accumulative distance from the start point to the foot point
+  - cal_trans_prob
+    `_od_in_same_link`: Analyzed the cases that the cotinuos candidates are located on the same link
+
 ## [1.0.04] - 2021-07-24
 
 ### Added

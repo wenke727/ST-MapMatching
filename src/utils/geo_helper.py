@@ -53,7 +53,7 @@ def get_foot_point(point, line_p1, line_p2):
     x2 = line_p2[0]
     y2 = line_p2[1]
     # z2 = line_p2[2]
-
+    assert not (x1 == x2 and y1 == y2), f"check line {line_p1}, {line_p2}"
     # k = -((x1 - x0) * (x2 - x1) + (y1 - y0) * (y2 - y1) + (z1 - z0) * (z2 - z1)) / \
     #     ((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)*1.0
     k = -((x1 - x0) * (x2 - x1) + (y1 - y0) * (y2 - y1)) / ((x2 - x1) ** 2 + (y2 - y1) ** 2 )*1.0

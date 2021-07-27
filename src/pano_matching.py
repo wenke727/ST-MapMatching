@@ -10,21 +10,19 @@ from load_step import split_line_to_points
 from DigraphOSM import load_net_helper, Digraph_OSM
 from matching import st_matching, load_trajectory
 from setting import SZ_BBOX
-from utils.geo_helper import gdf_to_geojson
-
-net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
+from utils.geo_helper import gdf_to_geojson, load_postgis
 
 #%%
-from utils.geo_helper import gdf_to_geojson, load_postgis
 
 PCL_BBOX = [113.931914,22.573536, 113.944456,22.580613]
 
 roads = load_postgis('roads', PCL_BBOX)
 
+net = load_net_helper(bbox=PCL_BBOX, combine_link=True, reverse_edge=True, overwrite=False, two_way_offeset=True)
 
 # %%
 for id in tqdm(range(0, roads.shape[0])):
-    traj = split_line_to_points(roads.iloc[id].geometry, compress=True, config={'dist_max': .5, 'verbose': True})
+    traj = split_line_to_points(roads.iloc[id].geometry, compress=True, config={'dist_max': .5, 'verbose': False})
     path = st_matching(traj, net, plot=False, satellite=False) 
     if path is None:
         continue
@@ -45,7 +43,8 @@ for id in tqdm(range(0, roads.shape[0])):
 
 # %%
 # net.df_edges[~net.df_edges.oneway].plot()
-
+id = 103 # 141
+traj = split_line_to_points(roads.iloc[id].geometry, compress=True, config={'dist_max': .5, 'verbose': True})
 
 gdf_to_geojson(traj, '../input/traj_debug')
 

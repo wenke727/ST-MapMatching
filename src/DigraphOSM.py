@@ -63,6 +63,7 @@ class Digraph_OSM(Digraph):
             self.df_edges = self.add_reverse_edge(self.df_edges)
             self.df_edges.reset_index(drop=True, inplace=True)
         
+        self.df_edges.loc[:, 'index'] = self.df_edges.index
         if combine_link or reverse_edge:
             # self.df_nodes = self.df_nodes.loc[ np.unique(np.hstack((self.df_edges.s.values, self.df_edges.e.values))),:]
             super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
@@ -216,6 +217,9 @@ class Digraph_OSM(Digraph):
         df_edge_rev.loc[:, 'order']    = -df_edge_rev.order - 1
         df_edge_rev.loc[:, 'geometry'] =  df_edge_rev.geometry.apply( lambda x: LineString(x.coords[::-1]) )
         df_edge_rev.rename(columns={'s':'e', 'e':'s'}, inplace=True)
+
+        df_edge_rev.loc[:, 'dir'] = -1
+        df_edges.loc[:, 'dir'] = 1
 
         return df_edges.append(df_edge_rev).reset_index(drop=True)
 
@@ -412,7 +416,7 @@ class Digraph_OSM(Digraph):
         return df.merge(self.df_edges, on=on)[attrs]
 
 
-def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
+def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True,cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
     # parse xml to edge and node with/without combiantion
     if xml_fn is not None:
         net = Digraph_OSM(xml_fn=xml_fn, combine_link=combine_link)
@@ -428,7 +432,7 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
     if os.path.exists(fn) and not overwrite:
         net = s.read(fn)
     else:
-        net = Digraph_OSM(bbox=bbox, combine_link=combine_link, reverse_edge=True, two_way_offeset=two_way_offeset, logger=logger)
+        net = Digraph_OSM(bbox=bbox, combine_link=combine_link, reverse_edge=reverse_edge, two_way_offeset=two_way_offeset, logger=logger)
         s.save(net, fn)
         if convert_to_geojson:
             gdf_to_geojson(net.df_edges, f'../cache/edges_{bbox_str}')
@@ -436,14 +440,19 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
     
     return net
 
-
+#%%
 if __name__ == '__main__':
     # net = load_net_helper(xml_fn='../input/futian.xml', combine_link=True)
-    net = load_net_helper(bbox=GBA_BBOX, combine_link=True, overwrite=False, two_way_offeset=True)
-    # net.upload_topo_data_to_db('gba')
+    net = load_net_helper(bbox=SZ_BBOX, combine_link=True, reverse_edge=True, overwrite=True, two_way_offeset=True)
+    net.upload_topo_data_to_db('shenzhen')
     # # df_edge = net.df_edges
     # logger.warning('sucess')
 
-    net.a_star(1491845212, 1116467141)
+    # searcing method
+    # net.a_star(1491845212, 1116467141)
+    path = net.a_star(1491845212, 1116467141, max_layer=10**5, max_dist=20**7)
 
-#%%
+    # construct trajectories 
+    # gdf_path = net.node_sequence_to_edge(path['path'])
+
+# %%
