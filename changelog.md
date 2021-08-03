@@ -2,7 +2,19 @@
 
 ## [Unreleased]
 
-- bidirectional A* algm
+- [ ] bidirectional A* algm
+
+## [1.0.06] - 2021-07-27
+
+### Changed
+
+- matching.py
+  - cal_trans_prob
+    - Adjust the caculate functions, + 'np.abs'
+    - adjust the ratio, when the ratio is bigger than 1, than `factor = 1/ factor`
+      ![case0](./.fig/bug_v_bigger_than_1_case0.png)
+    - Add azimuth to transmission probability.
+      ![azimuth](./.fig/bug2.jpg)
 
 ## [1.0.05] - 2021-07-27
 

@@ -213,7 +213,6 @@ class Digraph_OSM(Digraph):
         df_edges.loc[:, 'is_ring'] = df_edges.geometry.apply( lambda x: x.is_ring)
 
         df_edge_rev = df_edges.query('oneway == False and not is_ring')
-        # df_edge_rev.loc[:, 'rid']      = -df_edge_rev.rid
         df_edge_rev.loc[:, 'order']    = -df_edge_rev.order - 1
         df_edge_rev.loc[:, 'geometry'] =  df_edge_rev.geometry.apply( lambda x: LineString(x.coords[::-1]) )
         df_edge_rev.rename(columns={'s':'e', 'e':'s'}, inplace=True)
@@ -225,10 +224,10 @@ class Digraph_OSM(Digraph):
 
 
     def get_intermediate_point(self):
-        """出入度为1的路网，逐一去识别路段，然后更新属性
+        """Identify the road segment with nodes of 1 indegree and 1 outdegree. 
 
         Returns:
-            [type]: [description]
+            [list]: Road segement list.
         """
         return self.degree.query( "indegree == 1 and outdegree == 1" ).index.unique().tolist()
     
@@ -448,11 +447,11 @@ if __name__ == '__main__':
     # # df_edge = net.df_edges
     # logger.warning('sucess')
 
-    # searcing method
+    """ a_star algorithm test """
     # net.a_star(1491845212, 1116467141)
     path = net.a_star(1491845212, 1116467141, max_layer=10**5, max_dist=20**7)
 
-    # construct trajectories 
+    """ construct trajectories """ 
     # gdf_path = net.node_sequence_to_edge(path['path'])
 
 # %%

@@ -2,13 +2,16 @@
 import os
 import sys
 import time
+import math
 import copy
 import warnings
+from matplotlib import lines
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from tqdm import tqdm
 import geopandas as gpd
+from shapely import wkt
 import matplotlib.pyplot as plt
 from shapely.geometry import Point, LineString, box
 
@@ -18,7 +21,8 @@ from utils.interval_helper import merge_intervals
 from utils.pickle_helper import PickleSaver
 from load_step import df_path, split_line_to_points
 from DigraphOSM import Digraph_OSM, load_net_helper
-from utils.geo_helper import coords_pair_dist, cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis
+from utils.geo_helper import coords_pair_dist, cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis, get_foot_point
+from utils.azimuth_helper import cal_polyline_azimuth, cal_points_azimuth, azimuth_cos_similarity, azimuthAngle
 from utils.log_helper import LogHelper, logbook
 
 from setting import filters as way_filters
@@ -83,7 +87,7 @@ def matching_debug_subplot(traj, item, net, ax=None, legend=True, scale=.9):
     traj.loc[[item.pid_1]].plot(ax=ax, marker="s", label=f'D ({dest})', zorder=9)
 
     # path
-    net.df_edges.loc[[i]].plot(ax=ax, linestyle='--', alpha=.8, label=f'first({i}, {item.observ_prob:.2f})', color='green')
+    net.df_edges.loc[[i]].plot(ax=ax, linestyle='--', alpha=.8, label=f'first({i})', color='green')
     gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='path')
     net.df_edges.loc[[j]].plot(ax=ax, linestyle='-.', alpha=.8, label=f'last({j}, {item.observ_prob:.2f})', color='black')
 
@@ -166,12 +170,12 @@ def code_testing_single(id, net, debuf_with_step=False):
         observ_prob_dict = cal_observ_prob(df_candidates)
 
         # step 2.2: Spatial analysis, transmission prob
-        tList, graph_t = cal_trans_prob(df_candidates, net)
+        tList, gt, graph_t = cal_trans_prob(df_candidates, net)
 
 
         # step 4: find matched sequence
-        rList = find_matched_sequence(graph_t, df_candidates, tList)
-        path = get_path(rList, graph_t, net, True)
+        rList = find_matched_sequence(gt, df_candidates, tList)
+        path = get_path(rList, gt, net, True)
 
         graph_t
 
@@ -195,7 +199,7 @@ def load_trajectory(fn = '../input/tra.shp'):
     return tra
 
 
-def get_candidates(traj, edges, georadius=20, top_k=5, dis_factor=DIS_FACTOR, plot=False, logger=logger):
+def get_candidates(traj, edges, georadius=50, top_k=5, dis_factor=DIS_FACTOR, plot=False, logger=logger):
     """Get candidates edges for traj
 
     Args:
@@ -213,7 +217,6 @@ def get_candidates(traj, edges, georadius=20, top_k=5, dis_factor=DIS_FACTOR, pl
         df = copy.deepcopy(df_candidates)
         origin_size = df.shape[0]
 
-        # add direction
         df_new = df.merge(edges, right_index=True, left_on='rindex')\
                         .sort_values(['pid', 'dist_to_line'], ascending=[True, True])\
                         .groupby(['pid', 'rid', 'dir'])\
@@ -253,26 +256,28 @@ def get_candidates(traj, edges, georadius=20, top_k=5, dis_factor=DIS_FACTOR, pl
     return candidates_filtered if filter else df_candidates.sort_values(['pid', 'dist_to_line']).groupby('pid').head(5)
 
 
-def cal_observ_prob(df, std_deviation=20):
+def cal_observ_prob(df, std_deviation=20, standardization=False):
     observ_prob_factor = 1 / (np.sqrt(2*np.pi) * std_deviation)
     
     def helper(x):
         return observ_prob_factor * np.exp(-np.power(x, 2)/(2*np.power(std_deviation, 2)))
     
-    df.loc[:, 'observ_prob'] = df.dist_to_line.apply( helper)
-    df.loc[:, 'observ_prob'] = df.observ_prob / df.observ_prob.max()
+    df.loc[:, 'observ_prob'] = df.dist_to_line.apply(helper)
+    if standardization:
+        df.loc[:, 'observ_prob'] = df.observ_prob / df.observ_prob.max()
     
     observ_prob_dict = df.set_index(['pid', 'rindex'])['observ_prob'].to_dict()
 
     return observ_prob_dict
 
 
-def cal_relative_offset(node:Point, polyline:LineString, verbose=False):
+def cal_relative_offset(node:Point, polyline:LineString, with_connector=True, verbose=False):
     """Calculate the relative offset between the node's foot and the polyline.
 
     Args:
         node (Point): [description]
         polyline (LineString): [description]
+        with_connector (bool, optional): Connect to the shortest path.
         verbose (bool, optional): [description]. Defaults to False.
 
     Returns:
@@ -281,22 +286,36 @@ def cal_relative_offset(node:Point, polyline:LineString, verbose=False):
     Example: 
         ```
         from shapely import wkt
-        node = wkt.loads('POINT (114.051228 22.539597)')
-        linestring = wkt.loads('LINESTRING (114.0516508 22.539516, 114.0515715 22.5395317, 114.0515222 22.5395533, 114.0514758 22.5395805, 
-        114.0514441 22.5396039, 114.0514168 22.5396293, 114.0513907 22.5396616, 114.0513659 22.5396906, 114.0513446 22.5397236, 114.0512978 22.5398214)')
+        node = wkt.loads('POINT (113.934144 22.577979)')
+        # case 0, 创科路/打石二路路口
+        polyline = wkt.loads("LINESTRING (113.934186 22.57795, 113.934227 22.577982, 113.934274 22.578013, 113.934321 22.578035, 113.934373 22.578052, 113.934421 22.57806, 113.93448 22.578067)")
+        # case 1
+        linestring = wkt.loads('LINESTRING (113.93407 22.577737, 113.934079 22.577783, 113.934093 22.577824, 113.934116 22.577866, 113.934144 22.577905, 113.934186 22.57795, 113.934227 22.577982, 113.934274 22.578013, 113.934321 22.578035, 113.934373 22.578052, 113.934421 22.57806, 113.93448 22.578067)')
+        # case 2
+        polyline = wkt.loads("LINESTRING (113.93407 22.577737, 113.934079 22.577783, 113.934093 22.577824, 113.934116 22.577866, 113.934144 22.577905)")
         cal_relative_offset(node, linestring)
         ```
     """
     # The case continuous repeating point
-    lines = [LineString((polyline.coords[i], polyline.coords[i+1])) for i in range(len(polyline.coords)-1) if polyline.coords[i] != polyline.coords[i+1] ]
+    coords = [polyline.coords[0]]
+    for p in polyline.coords[1:]:
+        if p == coords[-1]:
+            continue
+        coords.append(p)
+    
+    lines = [LineString((coords[i], coords[i+1])) for i in range(len(coords)-1) if coords[i] != coords[i+1] ]
     lines = gpd.GeoDataFrame( {'geometry': lines} )
 
-    # 避免使用保留字段
-    # lines.loc[:, 'length'] = lines.geometry.apply(lambda x: coords_pair_dist(x.coords[0], x.coords[-1], xy=True))
+    # Don't use the predefined variables
     lines.loc[:, '_len'] = lines.geometry.apply(lambda x: coords_pair_dist(x.coords[0], x.coords[-1], xy=True))
     lines.loc[:, '_dist'] = lines.geometry.apply(lambda x: x.distance(node)/DIS_FACTOR)
 
     nearest_line_id = lines['_dist'].idxmin()
+    
+    if with_connector:
+        foot = get_foot_point(node.coords[0], coords[nearest_line_id], coords[nearest_line_id+1])
+        seg_0 = coords[:nearest_line_id+1] + [foot]
+        seg_1 = [foot] + coords[nearest_line_id+1:]
 
     dist_prev_lines = np.sum(lines.loc[:nearest_line_id]._len.values[:-1])
 
@@ -304,7 +323,12 @@ def cal_relative_offset(node:Point, polyline:LineString, verbose=False):
     foot_dict = cal_foot_point_on_polyline(node, line)
     _dist = coords_pair_dist(foot_dict['foot'], line.coords[0], xy=True)
 
-    return dist_prev_lines + _dist if foot_dict['flag'] > 0 else dist_prev_lines - _dist
+    _dist = dist_prev_lines + _dist if foot_dict['flag'] > 0 else dist_prev_lines - _dist
+
+    if with_connector:
+        return _dist, seg_0, seg_1
+
+    return _dist
 
 
 def linestring_combine_helper(path, net):
@@ -320,7 +344,7 @@ def linestring_combine_helper(path, net):
     if path is None or len(path) <= 1:
         return None
     
-    lst = gpd.GeoDataFrame([ {'s': path[i], 'e': path[i+1]} for i in range(len(path)-1) ])
+    lst = gpd.GeoDataFrame([{'s': path[i], 'e': path[i+1]} for i in range(len(path)-1) ])
     lines = lst.merge(net.df_edges, on=['s', 'e']).geometry.values
     points = [ l.coords[:] for l in lines ]
     
@@ -331,54 +355,68 @@ def linestring_combine_helper(path, net):
     return LineString(res)
 
 
-def cal_trans_prob(df_candidates, traj, net):
-    df_candidates.loc[:, 'offset'] = df_candidates.apply(lambda x: 
-        cal_relative_offset(traj.loc[x.pid].geometry, net.df_edges.loc[x.rindex].geometry), axis=1 )
+def combine_link_and_path(item):
+    mid_lst = []
+    if item.shortest_path is not None:
+        if 'path' in item.shortest_path and item.shortest_path['path'] is not None:
+            mid_lst = [ (net.node[i]['x'], net.node[i]['y']) for i in item.shortest_path['path']] 
+    
+    coords = [ item.seg_last_0, mid_lst, item.seg_first_1 ]
+
+    path = [coords[0][0]]
+    for seg in coords:
+        for node in seg:
+            if node == path[-1]:
+                continue
+            path.append(node)
+
+    return path
+
+
+def cal_trans_prob(df_candidates, traj, net, dir_trans_prob=True):
+    df_candidates[['offset', 'seg_first', 'seg_last']] = df_candidates.apply(lambda x: 
+        cal_relative_offset(traj.loc[x.pid].geometry, net.df_edges.loc[x.rindex].geometry), axis=1, result_type='expand')
 
     tList, graph_t = [], []
     for _, sub in df_candidates.groupby('pid'):
         tList.append(sub)
 
     for i in range(len(tList)-1):
-        base_atts = ['pid', 'rindex','s', 'e', 'offset']
+        base_atts = ['pid', 'rindex','s', 'e', 'offset', 'seg_first', 'seg_last']
         a, b = tList[i][base_atts], tList[i+1][base_atts+['observ_prob']]
         # Cartesian product
         a.loc[:, 'tmp'], b.loc[:, 'tmp'] = 1, 1
         graph_t.append(a.merge(b, on='tmp', suffixes=["_0", '_1']).drop(columns='tmp') )
 
     def _od_in_same_link(gt):
-        # 匹配在同一个线段上面，寻找最短路的 src ＆ dst 的设置
-        # The case: o and d all on the same link
+        # The case: `src` and `dst` all on the same link
         con = gt.rindex_0 == gt.rindex_1
         
-        # case 1: 轨迹前行方向 和 道路前进方向 一致
+        # case 1: The track goes in the same direction as the road
         case1 = con & (gt.offset_0 < gt.offset_1)
         if case1.sum()>0:
-            # gt.loc[case1, 'e_0'] = gt.loc[case1, 's_0']
-            # gt.loc[case1, 's_1'] = gt.loc[case1, 'e_1']
-            gt.loc[:, 'same_link_forward'] = False
-            gt.loc[case1, 'same_link_forward'] = True
+            gt.loc[:, 'forward'] = False
+            gt.loc[case1, 'forward'] = True
             if logger is not None :
-                logger.warning(f"Adjust the (o, d) for the case the trajectory moving direction is the same with the road direction:\n\t {gt.loc[case1].to_dict(orient='record')}")
+                logger.info(f"Adjust the (src, dst) for the case the trajectory moving direction is the same with the road:\n\t {gt.loc[case1].to_dict(orient='record')}")
         
-        # case 2: 轨迹前行方向 和 道路前进方向 相反，就是默认的逻辑
+        # case 2: The track goes in the reverse direction of the road, and the process logic is the default one
         # case2 = con & (gt.offset_0 > gt.offset_1)
         
-        # TODO
-        # case 3：相同的情况, 无需处理
+        # case 3: Continuous points of the trajectory have the same coordinates
         case3 = con & (gt.offset_0 == gt.offset_1)
         if case3.sum()>0:
             gt.loc[:, 'same_link_same_point'] = False
             gt.loc[case1, 'same_link_same_point'] = True
             if logger is not None:
-                logger.warning(f"The overlap of trajectory points:\n\t {gt.loc[case3].to_dict(orient='record')}")
+                logger.warning(f"Continuous points of the trajectory have the same coordinates:\n\t {gt.loc[case3].to_dict(orient='record')}")
         
         gt.e_0 = gt.e_0.astype(np.int)
         gt.s_1 = gt.s_1.astype(np.int)
         
         return gt    
 
-    ordered_cols = ['pid_0', 'pid_1', 'rindex_0', 'rindex_1', 's_0', 'e_0', 's_1', 'e_1', 'offset_0', 'offset_1', 'observ_prob']
+    ordered_cols = ['pid_0', 'pid_1', 'rindex_0', 'rindex_1', 's_0', 'e_0', 's_1', 'e_1', 'seg_last_0', 'seg_first_1', 'offset_0', 'offset_1', 'observ_prob']
     graph_t = pd.concat(graph_t)[ordered_cols].reset_index(drop=True)
     graph_t = _od_in_same_link(graph_t)
 
@@ -387,25 +425,34 @@ def cal_trans_prob(df_candidates, traj, net):
     graph_t.loc[:, 'd_euc']   = graph_t.apply(lambda x: coords_pair_dist(traj.loc[x.pid_0].geometry, traj.loc[x.pid_1].geometry), axis=1)
     graph_t.loc[:, 'd_step0'] = graph_t.apply(lambda x: net.edge[x.s_0, x.e_0], axis=1)
 
-    if 'same_link_forward' in graph_t.columns:
-        graph_t.loc[graph_t.same_link_forward, 'd_sht'] = -graph_t.loc[graph_t.same_link_forward, 'd_step0']
-        graph_t.loc[graph_t.same_link_forward, 'shortest_path' ] = None
+    if 'forward' in graph_t.columns:
+        graph_t.loc[graph_t.forward, 'd_sht'] = -graph_t.loc[graph_t.forward, 'd_step0']
+        graph_t.loc[graph_t.forward, 'shortest_path' ] = None
 
-    graph_t.loc[:, 'w']       = graph_t.d_sht + (graph_t.d_step0 - graph_t.offset_0) + graph_t.offset_1 
-    graph_t.loc[:, 'v']       = graph_t.apply(lambda x:  x.d_euc/x.w if x.d_euc/x.w <= 1 else 1, axis=1 )  
+    graph_t.loc[:, 'w'] = graph_t.d_sht + np.abs((graph_t.d_step0 - graph_t.offset_0)) + np.abs(graph_t.offset_1) 
+    graph_t.loc[:, 'v'] = graph_t.apply(lambda x:  x.d_euc/x.w if x.d_euc/x.w < 1 else x.w/x.d_euc, axis=1 )  
     
     # The case: o and d all on the same link
     if 'same_link_same_point' in graph_t.columns:
         graph_t.loc[graph_t.same_link_same_point, ['v', 'shortest_path']] = [1, None]
 
-    graph_t.loc[:, 'f'] = graph_t.v * graph_t.observ_prob
+    graph_t.loc[:, 'path'] =  graph_t.apply(combine_link_and_path, axis=1)
+    if dir_trans_prob:
+        graph_t.loc[:, 'move_dir'] = graph_t.apply( lambda x: 
+            azimuthAngle(*traj.iloc[x.pid_0].geometry.coords[0], 
+                        *traj.iloc[x.pid_1].geometry.coords[0]
+                        ), axis=1)
+        graph_t.loc[:, 'f_dir'] = graph_t.apply(lambda x: azimuth_cos_similarity(cal_polyline_azimuth(x.path), x.move_dir ), axis=1)
+
+    graph_t.loc[:, 'f'] = graph_t.v * graph_t.observ_prob * (graph_t.f_dir if dir_trans_prob else 1)
     
-    gt = graph_t.drop_duplicates(['e_0','s_1']).set_index(['e_0', 's_1'])
+    atts = ['pid_0', 'rindex_0', 'rindex_1']
+    gt = graph_t.drop_duplicates(atts).set_index(atts)
 
     return tList, gt, graph_t
 
 
-def find_matched_sequence(graph_t, df_candidates, tList, drop_dulplicates=True, logger=logger):
+def find_matched_sequence(gt, df_candidates, tList, drop_dulplicates=True, logger=logger):
     prev_dict, f_score = {}, {}
 
     for i, item in tList[0].iterrows():
@@ -415,7 +462,11 @@ def find_matched_sequence(graph_t, df_candidates, tList, drop_dulplicates=True, 
         for j, nxt in tList[i].iterrows():
             _max = -np.inf
             for k, cur in tList[i-1].iterrows():
-                alt = f_score[k] + graph_t.loc[cur.e].loc[nxt.s].f
+                _f = gt.loc[i-1].loc[cur.rindex].loc[nxt.rindex].f
+                if _f > 1.001 and logger is not None:
+                    logger.warning(f"level {i-1}->{i}({cur.rindex}, {nxt.rindex}), F value {_f:.3f}, exceed 1.\n\t{gt.loc[i-1].loc[cur.rindex].loc[nxt.rindex].to_dict()}")
+                    
+                alt = f_score[k] + _f
                 if alt > _max:
                     _max = alt
                     prev_dict[j] = k
@@ -432,15 +483,15 @@ def find_matched_sequence(graph_t, df_candidates, tList, drop_dulplicates=True, 
     logger.debug(f'max score: {c}, f_score: {f_score}')
     logger.debug(f'{rList}')
     
-    rList = df_candidates.loc[rList[::-1]][['s', 'e']]
+    rList = df_candidates.loc[rList[::-1]][['pid', 'rindex', 's', 'e']]
 
     if drop_dulplicates:
-        rList = rList[(rList.s != rList.s.shift(1)) | (rList.e != rList.e.shift(1))]
+        return rList[(rList.s != rList.s.shift(1)) | (rList.e != rList.e.shift(1))]
     
     return rList
 
 
-def get_path(rList, graph_t, net):
+def get_path(rList, gt, net):
     """Get path by matched sequence node.
 
     Args:
@@ -455,29 +506,29 @@ def get_path(rList, graph_t, net):
         return net.df_edges.merge(rList, on=['s', 'e'])
     
     def _helper(x):
-        res = graph_t.loc[x.e].loc[x.nxt_s].shortest_path
+        res = gt.loc[x.pid].loc[x.rindex].loc[x.nxt_rindex].shortest_path
         
-        if res is None:
-            return None
-        
-        return res['path']
+        return res if res is None else res['path']
     
-    rList.loc[:, 'nxt_s'] = rList.s.shift(-1).fillna(0).astype(np.int)
+    rList.loc[:, 'nxt_rindex'] = rList.rindex.shift(-1).fillna(0).astype(np.int)
     steps = rList[:-1].apply(lambda x: _helper(x), axis=1)
-
-    if len(steps) == 1:
-        return None
 
     coords = []
     for step in steps.values:
         if step is None:
             continue
         coords += step
-    print(coords)
     
-    path = net.node_sequence_to_edge(coords)
+    path = net.node_sequence_to_edge(coords) if len(coords) > 1 else None
+    first_step = net.df_edges.loc[[rList.iloc[0].rindex]]
+    last_step = net.df_edges.loc[[rList.iloc[-1].rindex]]
     
-    return path
+    if path is not None: 
+        path.loc[:, 'step'] = 1
+    first_step.loc[:, 'step'] = 0
+    last_step.loc[:, 'step'] = -1
+    
+    return gpd.GeoDataFrame( pd.concat([first_step, path, last_step]) )
 
 
 def drop_consecutive_identical_points(traj):
@@ -485,35 +536,65 @@ def drop_consecutive_identical_points(traj):
     
     return traj[~con]
 
-def st_matching(traj, net, std_deviation=20, georadius=50, plot=True, save_fn=None, debug_in_levels=False, plot_candidate=False, satellite=False):
+
+def st_matching(traj, 
+                net, 
+                std_deviation=20, 
+                georadius=50, 
+                top_k=5, 
+                plot=True, 
+                save_fn=None, 
+                debug_in_levels=False, 
+                plot_candidate=False,
+                dir_trans_prob=True, 
+                satellite=False
+                ):
+    """[summary]
+
+    Args:
+        traj ([type]): [description]
+        net ([type]): [description]
+        std_deviation (int, optional): [description]. Defaults to 20.
+        georadius (int, optional): [description]. Defaults to 50.
+        top_k (int, optional): [description]. Defaults to 5.
+        plot (bool, optional): [description]. Defaults to True.
+        save_fn ([type], optional): [description]. Defaults to None.
+        debug_in_levels (bool, optional): [description]. Defaults to False.
+        plot_candidate (bool, optional): [description]. Defaults to False.
+        dir_trans_prob (bool, optional): The transmission probalility analysis take the azimuth angle into account. Defaults to True.
+        satellite (bool, optional): [description]. Defaults to False.
+
+    Returns:
+        [type]: [description]
+    """
     if traj.shape[0] == 0:
         return None
 
     traj = drop_consecutive_identical_points(traj)
 
     # step 1: candidate prepararation
-    df_candidates = get_candidates(traj, net.df_edges, georadius=georadius)
+    df_candidates = get_candidates(traj, net.df_edges, georadius=georadius, top_k=top_k)
     if df_candidates is None:
         return None
     
     if df_candidates.pid.nunique() <= 1:
         #TODO The cloesest edge.
         print('Only one level has candidates.')
-        return
+        return None
     
     # step 2.1: Spatial analysis, obervation prob
     cal_observ_prob(df_candidates, std_deviation)
     
     # step 2.2: Spatial analysis, transmission prob
-    tList, graph_t, gt_with_dulplicates = cal_trans_prob(df_candidates, traj, net)
+    tList, gt, graph_t = cal_trans_prob(df_candidates, traj, net, dir_trans_prob=dir_trans_prob)
 
     # TODO step 3: temporal analysis
     # step 4: find matched sequence
-    rList = find_matched_sequence(graph_t, df_candidates, tList)
-    path = get_path(rList, graph_t, net)
+    rList = find_matched_sequence(gt, df_candidates, tList)
+    path = get_path(rList, gt, net)
 
     if debug_in_levels:
-        matching_debug(traj, tList, gt_with_dulplicates, net, debug_in_levels)
+        matching_debug(traj, tList, graph_t, net, debug_in_levels)
 
     if not plot:
         return path
@@ -551,20 +632,8 @@ def st_matching(traj, net, std_deviation=20, georadius=50, plot=True, save_fn=No
     return path
 
 
-
-#%%
-# 42, 64 卫星瓦片请求失败
-# 15, 可能一条不存在的道路
-# 38 放大查看
-# 52 匝道处理
-# 143， 148
-
-
-# %%
-
 def check(fn):
     traj = load_trajectory(fn).reset_index()
-    
     traj = drop_consecutive_identical_points(traj)
 
     # step 1: candidate prepararation
@@ -573,65 +642,62 @@ def check(fn):
     cal_observ_prob(df_candidates, std_deviation=20)
 
     # step 2.2: Spatial analysis, transmission prob
-    tList, graph_t, gt_with_dulplicates = cal_trans_prob(df_candidates, traj, net)
+    tList, gt, graph_t = cal_trans_prob(df_candidates, traj, net, dir_trans_prob=True)
 
     # step 4: find matched sequence
-    rList = find_matched_sequence(graph_t, df_candidates, tList)
-    path = get_path(rList, graph_t, net)
+    rList = find_matched_sequence(gt, df_candidates, tList)
+    path = get_path(rList, gt, net)
 
-    matching_debug(traj, tList, gt_with_dulplicates, net, debug=True)
+    rList
+    matching_debug(traj, tList, graph_t, net, debug=True)
+   
+    return  rList
 
-fn ="../input/traj_debug.geojson"
-# # fn ="../input/traj_debug_141.geojson"
-traj = load_trajectory(fn).reset_index()
-check(fn)
-
-
-#%%
-
-node, polyline = traj.iloc[1].geometry, net.df_edges.loc[115094].geometry
-
-cal_relative_offset(traj.iloc[0].geometry, net.df_edges.loc[115094].geometry)
-
-cal_relative_offset(traj.iloc[1].geometry, net.df_edges.loc[115094].geometry)
-
-#%%
 #%%
 if __name__ == '__main__':
     """ Load network object """
     net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
 
-    """ a_star 最短路算法测试 """
-    # net.a_star(1491845161, 1933843924, plot=True)
 
-    """ test for cal_relative_offset """
-    # pid, ridx = df_candidates.iloc[0]['pid'], df_candidates.iloc[0]['rindex']
-    # node = traj.loc[pid].geometry
-    # line = net.df_edges.loc[ridx].geometry
-    # for i in [925, 926, 927, 928]:
-    #     cal_relative_offset(node, net.df_edges.loc[i].geometry)
+    """ cal_relative_offset check """
+    node = wkt.loads("POINT (113.934144 22.577979)")
+    polyline = wkt.loads("LINESTRING (113.93407 22.577737, 113.934079 22.577783, 113.934093 22.577824, 113.934116 22.577866, 113.934144 22.577905, 113.934186 22.57795, 113.934227 22.577982, 113.934274 22.578013, 113.934321 22.578035, 113.934373 22.578052, 113.934421 22.57806, 113.93448 22.578067)")
+    cal_relative_offset(node, polyline)
 
-    # for i in [1103, 979, 980, 981]:
-    #     cal_relative_offset(node, net.df_edges.loc[i].geometry)
 
     """" matching plot debug helper """
     # matching_debug(tList, graph_t)
     # matching_debug_level(tList, graph_t, 3)
     # matching_debug_level(tList, graph_t, 2)
 
-    """ matching test"""
+
+    """ matching test 0 """
     traj = load_trajectory("../input/traj_0.geojson")
     path = st_matching(traj, net, plot=True)
 
-    # st_matching(traj, net, False)
-    # error_lst = [ 37, 38, 40]
-    # planning_error = [43, 50, 56] 
-    # key_error = [64]
-    # uncontinous = [ 31, 40, 42,69, 76, 119] # 修改filter后解决问题
-    # code_testing(65, 150)
+
+    """ test for cal_relative_offset """
+    fn ="../input/traj_debug.geojson"
+    traj = load_trajectory(fn).reset_index()
+    
+    node, polyline = traj.iloc[1].geometry, net.df_edges.loc[115094].geometry
+    cal_relative_offset(traj.iloc[0].geometry, net.df_edges.loc[115094].geometry)
+    cal_relative_offset(traj.iloc[1].geometry, net.df_edges.loc[115094].geometry)
 
 
-    """ matching test"""
-    # traj = load_trajectory("../input/traj_debug.geojson")
-    # path = st_matching(traj, net, plot=True, debug_in_levels=False, satellite=True)
+    """ matching test 1 """
+    id = 149
+    fn = f"../input/traj_debug_{id}.geojson"
+    traj = load_trajectory(fn).reset_index()
+    check(fn)
+
+
+    """ Helper """
+    graph_t.sort_values('v', ascending=False)
+
+    gdf_to_postgis(traj, 'temp_traj')
+
+    graph_t.query("e_0==4044798340").sort_values('f')
+
+
 

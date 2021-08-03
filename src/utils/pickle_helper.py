@@ -30,6 +30,9 @@ class PickleSaver():
         if '/' not in fn:
             fn = os.path.join(self.folder, fn)
             
+        if '.pkl' not in fn:
+            fn = f"{fn}.pkl"
+            
         with open(fn,'rb') as f:
             try:
                 obj = pickle.load(f)
