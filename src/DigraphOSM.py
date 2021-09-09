@@ -391,7 +391,8 @@ class Digraph_OSM(Digraph):
     def upload_topo_data_to_db(self, name):
         try:
             gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
-            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_node')
+            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
+            gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
             return True
         except:
             if logger:
@@ -415,7 +416,7 @@ class Digraph_OSM(Digraph):
         return df.merge(self.df_edges, on=on)[attrs]
 
 
-def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True,cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
+def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True, cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
     # parse xml to edge and node with/without combiantion
     if xml_fn is not None:
         net = Digraph_OSM(xml_fn=xml_fn, combine_link=combine_link)

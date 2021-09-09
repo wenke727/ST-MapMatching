@@ -220,7 +220,7 @@ def load_postgis(table, bbox=None, geom_wkt=None, engine=ENGINE):
        geom_wkt = box(*bbox).to_wkt()
      
     if geom_wkt is None:
-        sql = 'select * from {table}'
+        sql = f'select * from {table}'
     else:        
         sql = f"""select * from {table} where ST_Within( geometry, ST_GeomFromText('{geom_wkt}', 4326) )"""
         

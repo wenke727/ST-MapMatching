@@ -2,7 +2,17 @@
 
 ## [Unreleased]
 
-- [ ] bidirectional A* algm
+## [1.0.07] - 2021-09-08
+
+### Changed
+
+- DigraphOSM
+  - upload_topo_data_to_db: upload `indegree` and `outdegree` osm point version to db
+- matching
+  - move gba trajectory tesing to `matching_testing.py`
+  - `find_matched_sequence` delete the `drop_dulplicates` part, for it would ignore a choice beteen levels.
+  - `get_candidates` add `shrink` parameter to check candidates in consecutive levels is the same or not, and then delete the dulplicate level.
+  - `combine_link_and_path` add parameter `net`
 
 ## [1.0.06] - 2021-07-27
 

@@ -25,7 +25,3 @@
 
 - probability distribution
   ![5, 10, 15, 20, 25]('.fig/observ_prob_distribution.png')
-
-### 需要恢复的文件
-
-- adaptive_zoom
