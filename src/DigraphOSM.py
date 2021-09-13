@@ -335,7 +335,6 @@ class Digraph_OSM(Digraph):
         came_from[origin] = None
         distance[origin] = 0
 
-        # TODO: add `visited`
         layer = 0
         while frontier:
             _, cur = heapq.heappop(frontier)
@@ -443,7 +442,7 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
 #%%
 if __name__ == '__main__':
     # net = load_net_helper(xml_fn='../input/futian.xml', combine_link=True)
-    net = load_net_helper(bbox=SZ_BBOX, combine_link=True, reverse_edge=True, overwrite=True, two_way_offeset=True)
+    net = load_net_helper(bbox=SZ_BBOX, combine_link=True, reverse_edge=True, overwrite=False, two_way_offeset=True)
     net.upload_topo_data_to_db('shenzhen')
     # # df_edge = net.df_edges
     # logger.warning('sucess')

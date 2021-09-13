@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.0.08] - 2021-09-13
+
+### Changed
+
+- `matching.py`
+  - `matching_debug_subplot` add transition probability
+- `douglasPeucker.py`
+  - `dfs` change the passes parameter from `array` to `subscript`
+    - to cut down the continuity point and raise the compression rate.
+  - `dp_compress_for_points` for trajectory points compression.
+- `azimuthAngle`
+  - fix speail case: [(0, 0), (0,1)]
+
 ## [1.0.07] - 2021-09-08
 
 ### Changed

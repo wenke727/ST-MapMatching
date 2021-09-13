@@ -34,15 +34,21 @@ def azimuthAngle(x1, y1, x2, y2):
     Returns:
         float: The angle in degree.
     """
-    angle = 0.0;
+    angle = 0.0
     dx, dy = x2 - x1, y2 - y1
 
-    if x2 == x1:
-        angle = math.pi / 2.0
+    if dx == 0:
+        angle = math.pi * 0
         if y2 == y1 :
             angle = 0.0
         elif y2 < y1 :
-            angle = 3.0 * math.pi / 2.0
+            angle = math.pi
+    elif dy == 0:
+        angle = 0
+        if dx > 0:
+            angle = math.pi / 2.0
+        else:
+            angle = math.pi / 2.0 * 3.0
     elif x2 > x1 and y2 > y1:
         angle = math.atan(dx / dy)
     elif x2 > x1 and y2 < y1 :
@@ -52,7 +58,7 @@ def azimuthAngle(x1, y1, x2, y2):
     elif x2 < x1 and y2 > y1 :
         angle = 3.0 * math.pi / 2.0 + math.atan(dy / -dx)
 
-    return (angle * 180 / math.pi)
+    return angle * 180 / math.pi
 
 
 def cal_polyline_azimuth(geom):

@@ -10,9 +10,11 @@ def dp_compress(point_list, dist_max=8, verbose=False):
         dist_max (int, optional): The max . Defaults to 8.
         verbose (bool, optional): [description]. Defaults to False.
     """
-    def _dfs(point_list, res, dist_max=2):
-        start, end = 0, len(point_list)-1
-
+    def _dfs(point_list, start, end, res, dist_max=2):
+        # start, end = 0, len(point_list)-1
+        if start >= end:
+            return
+        
         res.append(point_list[start])
         res.append(point_list[end])
 
@@ -29,11 +31,11 @@ def dp_compress(point_list, dist_max=8, verbose=False):
                 index += 1
 
             if max_vertical_dist >= dist_max:
-                _dfs(point_list[start:key_point_index], res, dist_max)
-                _dfs(point_list[key_point_index:end], res, dist_max)
+                _dfs(point_list, start, key_point_index, res, dist_max)
+                _dfs(point_list, key_point_index, end, res, dist_max)
 
     res = []
-    _dfs(point_list, res, dist_max)
+    _dfs(point_list, 0, len(point_list)-1, res, dist_max)
 
     res = list(set(res))
     res = sorted(res, key=lambda x:x[2])
@@ -62,11 +64,25 @@ def get_MeanErr(point_list, output_point_list):
     return Err/len(point_list)
 
 
+def dp_compress_for_points(df, dis_thred=10, verbose=False, reset_index=True):
+    traj = df.copy()
+    traj.loc[:, 'pid_order'] = traj.index
+    point_lst = traj.apply(lambda x: (x.geometry.x, x.geometry.y, x.pid_order), axis=1).values.tolist()
+    point_lst = dp_compress(point_lst, dis_thred, verbose)
+
+    if reset_index:
+        return traj.loc[[ i[2] for i in point_lst]].reset_index()
+    
+    return traj.loc[[ i[2] for i in point_lst]]
+
+
+#%%
+
 if __name__ == '__main__':
     point_list = []
     output_point_list = []
 
-    fd=open(r"../input/Dguiji.txt",'r')
+    fd=open(r"./Dguiji.txt",'r')
     for line in fd:
         line=line.strip()
         id=int(line.split(",")[0])
@@ -76,6 +92,11 @@ if __name__ == '__main__':
     fd.close()
 
     output_point_list = dp_compress(point_list, dist_max=8, verbose=True)
+
+    import geopandas as gpd
+    traj = gpd.read_file("../traj_for_compress.geojson")
+    dp_compress_for_points(traj, 8, True)
+
 
     # #将压缩数据写入输出文件
     # fd=open(r".\output.txt",'w')

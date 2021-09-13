@@ -76,7 +76,6 @@ def df_to_gdf_points( trip, in_sys = 'gcj', out_sys = 'wgs', keep_datetime =True
 
 
 def traj_points_to_line( df_tra, df_trip, plate, save = False ):
-    # TODO
     gdf = gpd.GeoDataFrame()
     for i in df_trip.trip_id.unique():
         tra = LineString( df_tra[df_tra.trip_id==i][['x','y','t']].values )
