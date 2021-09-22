@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.0.09] - 2021-09-23
+
+### Added
+
+- `azimuth_helper.py`
+  - azimuth_cos_similarity_for_linestring(geom, dir, weight=True)
+
+### Changed
+
+- `matching.py`
+  - add log for candidates
+
 ## [1.0.08] - 2021-09-13
 
 ### Changed

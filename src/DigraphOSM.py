@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from shapely import wkt
 import geopandas as gpd
 from xml.dom import minidom
 from collections import deque
@@ -14,11 +15,11 @@ from haversine import haversine, Unit
 from shapely.geometry import Point, LineString, box
 
 from utils.classes import Digraph
-from coords.coordTransfrom_shp import coord_transfer
-from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
-from utils.interval_helper import merge_intervals
 from utils.pickle_helper import PickleSaver
 from utils.log_helper import LogHelper, logbook
+from utils.interval_helper import merge_intervals
+from coords.coordTransfrom_shp import coord_transfer
+from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
 
 from setting import filters as way_filters
 from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX
@@ -26,10 +27,7 @@ from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX
 warnings.filterwarnings('ignore')
 
 
-g_log_helper = LogHelper(log_name='log.log', stdOutFlag=True)
-logger       = g_log_helper.make_logger(level=logbook.WARNING)
-
-
+#%%
 class Digraph_OSM(Digraph):
     def __init__(self, 
                  bbox=None,
@@ -205,7 +203,8 @@ class Digraph_OSM(Digraph):
                 flag = False
             else:
                 flag = False
-                self.logger.warning(f'new road type detected at: {oneway_flag}')
+                if self.logger is not None:
+                    self.logger.warning(f'new road type detected at: {oneway_flag}')
 
             return flag
 
@@ -391,10 +390,12 @@ class Digraph_OSM(Digraph):
         try:
             gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
             gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
+            
+            self.df_nodes.loc[:, 'id'] = self.df_nodes.index
             gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
             return True
         except:
-            if logger:
+            if self.logger is not None:
                 logger.error('upload data error.')
         
         return False
@@ -415,7 +416,7 @@ class Digraph_OSM(Digraph):
         return df.merge(self.df_edges, on=on)[attrs]
 
 
-def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True, cache_folder='../cache', convert_to_geojson=False, logger=logger, two_way_offeset=True):
+def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True, cache_folder='../cache', convert_to_geojson=False, logger=None, two_way_offeset=True):
     # parse xml to edge and node with/without combiantion
     if xml_fn is not None:
         net = Digraph_OSM(xml_fn=xml_fn, combine_link=combine_link)
@@ -430,6 +431,7 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
     
     if os.path.exists(fn) and not overwrite:
         net = s.read(fn)
+        net.df_edges.geom_origin = net.df_edges.geom_origin.apply(wkt.loads)
     else:
         net = Digraph_OSM(bbox=bbox, combine_link=combine_link, reverse_edge=reverse_edge, two_way_offeset=two_way_offeset, logger=logger)
         s.save(net, fn)
@@ -439,16 +441,22 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
     
     return net
 
+
 #%%
 if __name__ == '__main__':
-    # net = load_net_helper(xml_fn='../input/futian.xml', combine_link=True)
-    net = load_net_helper(bbox=SZ_BBOX, combine_link=True, reverse_edge=True, overwrite=False, two_way_offeset=True)
-    net.upload_topo_data_to_db('shenzhen')
-    # # df_edge = net.df_edges
-    # logger.warning('sucess')
+    logger = LogHelper(log_name='digraph_osm.log', log_dir='../log', stdOutFlag=False).make_logger(level=logbook.INFO)
+    net = load_net_helper(
+        bbox=SZ_BBOX, 
+        overwrite=False, 
+        logger=logger,
+        combine_link=True, 
+        reverse_edge=True, 
+        two_way_offeset=True, 
+    )
+    # net.upload_topo_data_to_db('pcl')
 
+    
     """ a_star algorithm test """
-    # net.a_star(1491845212, 1116467141)
     path = net.a_star(1491845212, 1116467141, max_layer=10**5, max_dist=20**7)
 
     """ construct trajectories """ 

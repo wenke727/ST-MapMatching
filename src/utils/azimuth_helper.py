@@ -1,7 +1,22 @@
 import math
 import numpy as np
 from shapely import wkt
+from haversine import haversine, Unit
 from shapely.geometry import Point, LineString
+
+
+def coords_pair_dist(o, d, xy=True):
+    if isinstance(o, Point) and isinstance(d, Point):
+        return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
+    
+    if (isinstance(o, tuple) and isinstance(d, tuple)) or \
+       (isinstance(o, list) and isinstance(d, list)):
+        if xy:
+            return haversine(o[:2][::-1], d[:2][::-1], unit=Unit.METERS)
+        else:
+            return haversine(o[:2], d[:2], unit=Unit.METERS)
+    
+    return np.inf
 
 
 def azimuth_diff(a, b):
@@ -110,6 +125,24 @@ def azimuth_cos_similarity(road_angels, head_azimuth):
     return val
 
 
+def azimuth_cos_similarity_for_linestring(geom, head_azimuth, weight=True):
+    if isinstance(geom, LineString):
+        coords = geom.coords[:]
+    if isinstance(geom, list):
+        coords = geom
+    
+    road_angels = cal_polyline_azimuth(coords)
+
+    lst = np.cos( [(azimuth_diff(i, head_azimuth) * math.pi/180) for i in road_angels ])
+    if not weight:
+        val = np.mean(lst)
+    else:
+        weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 
+        val = np.average(lst, weights=weights)
+    
+    return val
+    
+
 if __name__ == '__main__':
     p0 = wkt.loads('POINT (113.934151 22.577512)')
     p1 = wkt.loads('POINT (113.934144 22.577979)')
@@ -123,3 +156,6 @@ if __name__ == '__main__':
 
     azimuth_cos_similarity(road_angels, head_azimuth[0])
     
+    azimuth_cos_similarity_for_linestring(polyline, head_azimuth[0], True)
+    
+    azimuth_cos_similarity_for_linestring(polyline, head_azimuth[0], False)
