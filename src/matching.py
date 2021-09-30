@@ -490,12 +490,12 @@ def get_path(rList, gt, net):
         return net.df_edges.merge(rList, on=['s', 'e'])
     
     def _helper(x):
-        # print(f"gt.loc[{x.pid}].loc[{x.rindex}].loc[{x.nxt_rindex}]")
         res = gt.loc[x.pid].loc[x.rindex].loc[x.nxt_rindex].shortest_path
         
         return res if res is None else res['path']
     
     rList.loc[:, 'nxt_rindex'] = rList.rindex.shift(-1).fillna(0).astype(np.int)
+    rList.loc[:, 'pre_rindex'] = rList.rindex.shift(1).fillna(0).astype(np.int)
     steps = rList[:-1].apply(lambda x: _helper(x), axis=1)
 
     coords = []
@@ -503,18 +503,26 @@ def get_path(rList, gt, net):
         if step is None:
             continue
         coords += step
+    path = net.node_sequence_to_edge(coords, attrs=list(net.df_edges)) if len(coords) > 1 else None
     
-    path = net.node_sequence_to_edge(coords) if len(coords) > 1 else None
     first_step = net.df_edges.loc[[rList.iloc[0].rindex]]
-    last_step = net.df_edges.loc[[rList.iloc[-1].rindex]]
+    last_step  = net.df_edges.loc[[rList.iloc[-1].rindex]]
     
+    # add interval of the edge portion
+    first =  gt.loc[0].loc[rList.iloc[0].rindex].loc[rList.iloc[0].nxt_rindex]
+    first_step.loc[:, 'breakpoint'] = first.offset_0 / first.d_step0
+    
+    last  =  gt.loc[rList.iloc[-1].pid-1].loc[rList.iloc[-1].pre_rindex].loc[rList.iloc[-1].rindex]
+    last_step.loc[:, 'breakpoint'] = last.offset_1 / net.edge[last.s_1, last.e_1]
+    
+        
     if path is not None: 
         path.loc[:, 'step'] = 1
 
     first_step.loc[:, 'step'] = 0
-    last_step.loc[:, 'step'] = -1
+    last_step.loc[:, 'step']  = -1
     
-    return gpd.GeoDataFrame( pd.concat([first_step, path, last_step]) )
+    return gpd.GeoDataFrame( pd.concat([first_step, path, last_step]) ).reset_index(drop=True)
 
 
 def st_matching(traj, 
@@ -524,7 +532,7 @@ def st_matching(traj,
                 georadius=50, 
                 top_k=5, 
                 traj_compress=True,
-                traj_thres=7,
+                traj_thres=5,
                 plot=True, 
                 satellite=False,
                 save_fn=None, 
@@ -561,8 +569,8 @@ def st_matching(traj,
     if traj_compress:
         traj = dp_compress_for_points(traj, dis_thred=traj_thres)
         if logger is not None:
-            logger.info(f"compressed traj: \n{traj}")
-        print(f"Trajectory compression rate: {traj.shape[0]/origin_traj.shape[0]*100:.1f}% ({origin_traj.shape[0]} -> {traj.shape[0]})")
+            # logger.info(f"compressed traj: \n{traj}")
+            logger.info(f"Trajectory compression rate: {traj.shape[0]/origin_traj.shape[0]*100:.1f}% ({origin_traj.shape[0]} -> {traj.shape[0]})")
 
     # step 1: candidate prepararation
     df_candidates = get_candidates(traj, net.df_edges, georadius=georadius, top_k=top_k, plot=plot_candidate, logger=logger)
@@ -686,7 +694,7 @@ if __name__ == '__main__':
     """ matching test 0 """
     fn = "../input/traj_debug_case2.geojson"
     traj = load_trajectory(fn)
-    path = st_matching(traj, net, plot=True, debug_in_levels=True, logger=logger, satellite=True, top_k=5)
+    path = st_matching(traj, net, plot=True, debug_in_levels=False, logger=logger, satellite=True, top_k=5)
 
 
     """ matching test 0 """

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.10] - 2021-09-23
+
+### Changed
+
+- `DigraphOSM.py`
+  - net.df_edges: change `index` -> `eid`
+
 ## [1.0.09] - 2021-09-23
 
 ### Added

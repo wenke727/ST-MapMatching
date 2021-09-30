@@ -26,6 +26,7 @@ from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX
 
 warnings.filterwarnings('ignore')
 
+# TODO net.df_edges: index -> eid
 
 #%%
 class Digraph_OSM(Digraph):
@@ -61,13 +62,16 @@ class Digraph_OSM(Digraph):
             self.df_edges = self.add_reverse_edge(self.df_edges)
             self.df_edges.reset_index(drop=True, inplace=True)
         
-        self.df_edges.loc[:, 'index'] = self.df_edges.index
+        self.df_edges.loc[:, 'eid'] = self.df_edges.index
         if combine_link or reverse_edge:
             # self.df_nodes = self.df_nodes.loc[ np.unique(np.hstack((self.df_edges.s.values, self.df_edges.e.values))),:]
             super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
         
         if two_way_offeset:
             self.df_edges = self.edge_offset()
+        
+        order_atts = ['eid', 'rid', 'name', 's', 'e', 'order', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'is_ring', 'geometry', 'geom_origin']
+        self.df_edges = self.df_edges[order_atts]
 
 
     def download_map(self, fn, bbox, verbose=False):
@@ -283,7 +287,7 @@ class Digraph_OSM(Digraph):
             res.append(self.combine_links_of_rid(rid, omit_records, self.df_edges))
 
         comb_rids = gpd.GeoDataFrame(pd.concat(res))
-        comb_rids = keep_records.append(comb_rids).reset_index()
+        comb_rids = keep_records.append(comb_rids).reset_index(drop=True)
 
         return comb_rids
 
@@ -391,7 +395,8 @@ class Digraph_OSM(Digraph):
             gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
             gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
             
-            self.df_nodes.loc[:, 'id'] = self.df_nodes.index
+            self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
+            self.df_nodes = self.df_nodes[['nid', 'x', 'y', 'traffic_signals', 'geometry']]
             gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
             return True
         except:
@@ -401,7 +406,7 @@ class Digraph_OSM(Digraph):
         return False
 
 
-    def node_sequence_to_edge(self, node_lst, on=['s', 'e'], attrs=['s', 'e', 'name', 'rid', 'road_type', 'geometry']):
+    def node_sequence_to_edge(self, node_lst, on=['s', 'e'], attrs=None):
         """Convert the id sequence of nodes into an ordered edges. 
 
         Args:
@@ -411,7 +416,10 @@ class Digraph_OSM(Digraph):
         Returns:
             [type]: [description]
         """
-        df =  gpd.GeoDataFrame([ {on[0]: node_lst[i], on[1]: node_lst[i+1]} for i in range(len(node_lst)-1) ])
+        df = gpd.GeoDataFrame([ {on[0]: node_lst[i], on[1]: node_lst[i+1]} for i in range(len(node_lst)-1) ])
+        
+        if attrs is None:
+            return df.merge(self.df_edges, on=on)
         
         return df.merge(self.df_edges, on=on)[attrs]
 
@@ -447,13 +455,13 @@ if __name__ == '__main__':
     logger = LogHelper(log_name='digraph_osm.log', log_dir='../log', stdOutFlag=False).make_logger(level=logbook.INFO)
     net = load_net_helper(
         bbox=SZ_BBOX, 
-        overwrite=False, 
+        overwrite=True, 
         logger=logger,
         combine_link=True, 
         reverse_edge=True, 
         two_way_offeset=True, 
     )
-    # net.upload_topo_data_to_db('pcl')
+    net.upload_topo_data_to_db('shenzhen')
 
     
     """ a_star algorithm test """
