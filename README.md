@@ -24,4 +24,4 @@
 [基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)
 
 - probability distribution
-  ![5, 10, 15, 20, 25]('.fig/observ_prob_distribution.png')
+  ![5, 10, 15, 20, 25](.fig/observ_prob_distribution.png)

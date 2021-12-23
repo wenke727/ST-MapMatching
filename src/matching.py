@@ -446,11 +446,12 @@ def find_matched_sequence(gt, df_candidates, tList, logger=None):
     for i, item in tList[0].iterrows():
         f_score[i] = item.observ_prob
 
+    ids = sorted(df_candidates.pid.unique())
     for i in range(1, len(tList)):
         for j, nxt in tList[i].iterrows():
             _max = -np.inf
             for k, cur in tList[i-1].iterrows():
-                _f = gt.loc[i-1].loc[cur.rindex].loc[nxt.rindex].f
+                _f = gt.loc[ids[i-1]].loc[cur.rindex].loc[nxt.rindex].f
                 if _f > 1.001 and logger is not None:
                     logger.warning(f"level {i-1}->{i}({cur.rindex}, {nxt.rindex}), F value {_f:.3f}, exceed 1.\n\t{gt.loc[i-1].loc[cur.rindex].loc[nxt.rindex].to_dict()}")
                     
@@ -461,7 +462,7 @@ def find_matched_sequence(gt, df_candidates, tList, logger=None):
                 f_score[j] = _max
     
     rList = []
-    c = max(f_score, key=f_score.get)
+    c = max(f_score, key= lambda x: (f_score.get(x), x))
     
     for i in range(len(tList)-1, 0, -1):
         rList.append(c)
@@ -509,7 +510,7 @@ def get_path(rList, gt, net):
     last_step  = net.df_edges.loc[[rList.iloc[-1].rindex]]
     
     # add interval of the edge portion
-    first =  gt.loc[0].loc[rList.iloc[0].rindex].loc[rList.iloc[0].nxt_rindex]
+    first =  gt.loc[rList.iloc[0].pid].loc[rList.iloc[0].rindex].loc[rList.iloc[0].nxt_rindex]
     first_step.loc[:, 'breakpoint'] = first.offset_0 / first.d_step0
     
     last  =  gt.loc[rList.iloc[-1].pid-1].loc[rList.iloc[-1].pre_rindex].loc[rList.iloc[-1].rindex]
@@ -652,7 +653,7 @@ def check(fn, logger):
     traj = dp_compress_for_points(traj, dis_thred=5)
     
     # step 1: candidate prepararation
-    df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=True, top_k=5)
+    df_candidates = get_candidates(traj, net.df_edges, georadius=50, plot=True, top_k=3)
     # step 2.1: Spatial analysis, obervation prob
     cal_observ_prob(df_candidates, std_deviation=20, standardization=True)
 
@@ -691,6 +692,17 @@ if __name__ == '__main__':
     net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
 
 
+    # BUG 节点1：没有匹配的记录
+    fn = '../input/traj_debug_199.geojson'
+    traj = load_trajectory(fn)
+    path = st_matching(traj, net, plot=True, debug_in_levels=False, logger=logger, satellite=True, top_k=5)
+    
+    # BUG 节点1：没有匹配的记录
+    fn = '../input/traj_debug_200.geojson'
+    traj = load_trajectory(fn)
+    path = st_matching(traj, net, plot=True, debug_in_levels=False, logger=logger, satellite=True, top_k=5)
+    
+        
     """ matching test 0 """
     fn = "../input/traj_debug_case2.geojson"
     traj = load_trajectory(fn)

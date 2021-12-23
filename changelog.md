@@ -2,12 +2,25 @@
 
 ## [Unreleased]
 
+## [1.0.11] - 2021-12-23
+
+### Changed
+
+- matching.py
+  - find_matched_sequence
+    - 优化针对某些场景，gt下标出错的情景
+    - f_score中查找最大值优化
+
+- setting.py
+  - filters 中去掉 service（相当于连接线）
+
 ## [1.0.10] - 2021-09-23
 
 ### Changed
 
 - `DigraphOSM.py`
   - net.df_edges: change `index` -> `eid`
+  - to_csv
 
 ## [1.0.09] - 2021-09-23
 

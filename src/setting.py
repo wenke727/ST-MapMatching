@@ -4,6 +4,7 @@ DEBUG_FOLDER = "../debug"
 GBA_BBOX = [112.471628,  22.138605, 114.424664,  23.565487]
 SZ_BBOX  = [113.746280,  22.441466, 114.623972,  22.864722]
 PCL_BBOX = [113.931914,  22.573536, 113.944456,  22.580613]
+FT_BBOX  = [114.05097,   22.53447,  114.05863,   22.54605]
 
 
 """ road_type_filter """
@@ -11,9 +12,11 @@ PCL_BBOX = [113.931914,  22.573536, 113.944456,  22.580613]
 # exclude links with tag attributes in the filters
 filters = {}
 
+
+# 道路含义：'service'：通往设施的道路
 filters['auto'] = {'area':['yes'],
                    'highway':['cycleway','footway','path','pedestrian','steps','track','corridor','elevator','escalator',
-                              'proposed','construction','bridleway','abandoned','platform','raceway','service'],
+                              'proposed','construction','bridleway','abandoned','platform','raceway'],
                    'motor_vehicle':['no'],
                    'motorcar':['no'],
                    'access':['private'],

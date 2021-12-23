@@ -22,11 +22,10 @@ from coords.coordTransfrom_shp import coord_transfer
 from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
 
 from setting import filters as way_filters
-from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX
+from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX, FT_BBOX
 
 warnings.filterwarnings('ignore')
 
-# TODO net.df_edges: index -> eid
 
 #%%
 class Digraph_OSM(Digraph):
@@ -136,6 +135,7 @@ class Digraph_OSM(Digraph):
                     
         nodes = gpd.GeoDataFrame(nodes)
         nodes.loc[:, 'geometry'] = nodes.apply(lambda i: Point(i.x, i.y), axis=1)
+        # FIXME "None of ['pid'] are in the columns"
         nodes.set_index('pid', inplace=True)
 
         if in_sys != out_sys:
@@ -175,7 +175,7 @@ class Digraph_OSM(Digraph):
         ls = np.unique(np.hstack((edges.s.values, edges.e.values)))
         nodes = nodes.loc[ls,:]
 
-        if fn_road:
+        if fn_road and os.path.exists(fn_road):
             road_speed = pd.read_excel(fn_road)[['road_type', 'v']]
             edges = edges.merge( road_speed, on ='road_type' )
         
@@ -328,9 +328,9 @@ class Digraph_OSM(Digraph):
             return res
         
         if origin not in self.graph or dest not in self.graph:
-            print(f"Edge({origin}, {dest})",
-                f"{', origin not in graph' if origin not in self.graph else ', '}",
-                f"{', dest not in graph' if dest not in self.graph else ''}")
+            # print(f"Edge({origin}, {dest})",
+                # f"{', origin not in graph' if origin not in self.graph else ', '}",
+                # f"{', dest not in graph' if dest not in self.graph else ''}")
             return None
 
         frontier = [(0, origin)]
@@ -405,6 +405,33 @@ class Digraph_OSM(Digraph):
         
         return False
 
+    def to_csv(self, name, folder = None):
+        try:
+            edge_fn = f'topo_osm_{name}_edge.csv'
+            node_fn = f'topo_osm_{name}_endpoint.csv'
+            
+            if folder is not None:
+                edge_fn = os.path.join(edge_fn, edge_fn)
+                node_fn = os.path.join(edge_fn, node_fn)
+            
+            df_edges = self.df_edges.copy()
+            atts = ['eid', 'rid', 'name', 's', 'e', 'order', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'geom_origin']
+            pd.DataFrame(df_edges[atts].rename({'geom_origin': 'geom'})).to_csv(edge_fn, index=False)
+            
+            df_nodes = self.df_nodes.copy()
+            df_nodes.loc[:, 'nid'] = df_nodes.index
+            df_nodes.loc[:, 'geom'] = df_nodes.geometry.apply(lambda x: x.to_wkt())
+            
+            atts = ['nid', 'x', 'y', 'traffic_signals', 'geometry']
+            pd.DataFrame(df_nodes[atts].rename({'geom_origin': 'geom'})).to_csv(node_fn, index=False)
+            
+            return True
+        except:
+            if self.logger is not None:
+                logger.error('upload data error.')
+        
+        return False
+
 
     def node_sequence_to_edge(self, node_lst, on=['s', 'e'], attrs=None):
         """Convert the id sequence of nodes into an ordered edges. 
@@ -452,22 +479,25 @@ def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, 
 
 #%%
 if __name__ == '__main__':
+    FT_BBOX  = [114.02874162861015, 22.52426853077481, 114.06680715668308, 22.56334823810368]
     logger = LogHelper(log_name='digraph_osm.log', log_dir='../log', stdOutFlag=False).make_logger(level=logbook.INFO)
     net = load_net_helper(
         bbox=SZ_BBOX, 
-        overwrite=True, 
+        overwrite=False, 
         logger=logger,
         combine_link=True, 
         reverse_edge=True, 
         two_way_offeset=True, 
     )
-    net.upload_topo_data_to_db('shenzhen')
+    # net.upload_topo_data_to_db('shenzhen')
 
     
-    """ a_star algorithm test """
+    # """ a_star algorithm test """
     path = net.a_star(1491845212, 1116467141, max_layer=10**5, max_dist=20**7)
 
     """ construct trajectories """ 
     # gdf_path = net.node_sequence_to_edge(path['path'])
 
 # %%
+
+
