@@ -21,14 +21,9 @@ from utils.azimuth_helper import cal_polyline_azimuth, azimuthAngle, azimuth_cos
 from utils.geo_helper import coords_pair_dist, cal_foot_point_on_polyline, gdf_to_geojson, gdf_to_postgis, get_foot_point
 from utils.log_helper import LogHelper, logbook
 
-from setting import DIS_FACTOR, DEBUG_FOLDER, SZ_BBOX
+from setting import DIS_FACTOR, DEBUG_FOLDER, SZ_BBOX, FT_BBOX
 
 warnings.filterwarnings('ignore')
-pd.set_option('display.width', 5000)
-# pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 500)
-pd.set_option('precision', 3)
-
 
 #%%
 """" matching plot debug helper """
@@ -217,6 +212,8 @@ def get_candidates(traj, edges, georadius=50, top_k=5, dis_factor=DIS_FACTOR, pl
             logger.debug(f"Shrink candidate link {origin_size} -> {df_new.shape[0]} by choose the closest link in a road")
 
         return df_new
+
+    edges = gpd.GeoDataFrame(edges)
 
     radius        = georadius*dis_factor
     boxes         = traj.geometry.apply(lambda i: box(i.x-radius, i.y-radius, i.x+radius, i.y+radius))
@@ -691,6 +688,13 @@ if __name__ == '__main__':
     logger = LogHelper(log_name='matching.log', stdOutFlag=True).make_logger(level=logbook.INFO)
     net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
 
+    # 福田测试案例(手动绘制)
+    traj = load_trajectory("../input/traj_0.geojson")
+    path = st_matching(traj, net, plot=True, satellite=True, logger=logger)
+
+    traj = load_trajectory("../input/traj_1.geojson")
+    path = st_matching(traj, net, plot=True, logger=logger, satellite=True)
+
 
     # BUG 节点1：没有匹配的记录
     fn = '../input/traj_debug_199.geojson'
@@ -709,15 +713,6 @@ if __name__ == '__main__':
     path = st_matching(traj, net, plot=True, debug_in_levels=False, logger=logger, satellite=True, top_k=5)
 
 
-    """ matching test 0 """
-    # 福田测试案例(手动绘制)
-    traj = load_trajectory("../input/traj_0.geojson")
-    path = st_matching(traj, net, plot=True, satellite=True, logger=logger)
-
-    traj = load_trajectory("../input/traj_1.geojson")
-    path = st_matching(traj, net, plot=True, logger=logger)
-
-
     """ matching test 1 """
     id = 1
     fn = f"../input/traj_debug_{id}.geojson"
@@ -730,23 +725,3 @@ if __name__ == '__main__':
     traj = load_trajectory(fn)
     path = st_matching(traj, net, plot=True, top_k=5, debug_in_levels=False, logger=logger)
 
-
-    """ Helper """
-    # graph_t.sort_values('v', ascending=False)
-    # gdf_to_postgis(traj, 'temp_traj')
-    # graph_t.query("e_0==4044798340").sort_values('f')
-
-
-    """ test for cal_relative_offset """
-    # fn ="../input/traj_debug.geojson"
-    # traj = load_trajectory(fn).reset_index()
-    
-    # node, polyline = traj.iloc[1].geometry, net.df_edges.loc[115094].geometry
-    # cal_relative_offset(traj.iloc[0].geometry, net.df_edges.loc[115094].geometry)
-    # cal_relative_offset(traj.iloc[1].geometry, net.df_edges.loc[115094].geometry)
-
-
-    """ cal_relative_offset check """
-    # node = wkt.loads("POINT (113.934144 22.577979)")
-    # polyline = wkt.loads("LINESTRING (113.93407 22.577737, 113.934079 22.577783, 113.934093 22.577824, 113.934116 22.577866, 113.934144 22.577905, 113.934186 22.57795, 113.934227 22.577982, 113.934274 22.578013, 113.934321 22.578035, 113.934373 22.578052, 113.934421 22.57806, 113.93448 22.578067)")
-    # cal_relative_offset(node, polyline)

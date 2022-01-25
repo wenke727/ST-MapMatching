@@ -3,7 +3,7 @@ import pandas as pd
 import geopandas as gpd
 
 from shapely.geometry import Point, LineString, Polygon, MultiPolygon
-import coordTransform_py.CoordTransform_utils as ct
+from . import coordTransform_py as ct
 
 
 def polyline_wgs_to_gcj(gdf):

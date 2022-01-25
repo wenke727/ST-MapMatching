@@ -1,16 +1,15 @@
 #%%
 import sys
 import numpy as np
-import matplotlib.pyplot as plt
 import geopandas as gpd
+import matplotlib.pyplot as plt
 from haversine import haversine, Unit
-import math
 
-sys.path.append('/home/pcl/traffic/map_factory')
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 
-from ImageRelatedProcess import clip_background, merge_tiles
-import GoogleMapTile_V3 as tile
+# sys.path.append('/home/pcl/traffic/map_factory')
+# from ImageRelatedProcess import clip_background, merge_tiles
+# import GoogleMapTile_V3 as tile
 
  
 def calculate_zoom(w, s, e, n, min_=12, max_=18):
@@ -79,7 +78,6 @@ def adaptive_zoom_level(w, s, e, n, ax, factor=10, max_=19, min_=10 ):
     return z
 
 
-
 def map_visualize(df: gpd.GeoDataFrame, 
                   lyrs='s', 
                   scale=0.5, 
@@ -100,7 +98,6 @@ def map_visualize(df: gpd.GeoDataFrame,
     Returns:
         [ax]: [description]
     """
-    
     # lyrs='y';scale=0.5;figsize = (12,9); color = "red";ax = None;fig=None;
     
     if ax is None:
@@ -132,12 +129,13 @@ def map_visualize(df: gpd.GeoDataFrame,
     zoom = calculate_zoom(x0, y0, x1, y1)
     # zoom = adaptive_zoom_level(x0, y0, x1, y1, ax)
 
-    img = tile.Tiles()
-    f_lst, img_bbox = img.get_tiles_by_bbox([x0, y1, x1, y0], zoom, lyrs)
-    to_image        = merge_tiles(f_lst)
-    background, _   = clip_background( to_image, img_bbox, [x0, y1, x1, y0], False)
+    # TODO
+    # img = tile.Tiles()
+    # f_lst, img_bbox = img.get_tiles_by_bbox([x0, y1, x1, y0], zoom, lyrs)
+    # to_image        = merge_tiles(f_lst)
+    # background, _   = clip_background( to_image, img_bbox, [x0, y1, x1, y0], False)
+    # ax.imshow(background, extent=[x0, x1, y0, y1], alpha=.6, zorder=0)
 
-    ax.imshow(background, extent=[x0, x1, y0, y1], alpha=.6, zorder=0)
     plt.xlim(x0, x1)
     plt.ylim(y0, y1)
     
@@ -161,5 +159,4 @@ if __name__ == '__main__':
     
     # daptive_zoom_level(*line.bounds, ax)
     adaptive_zoom_level(*line.bounds, ax)
-    # %%
     calculate_zoom(*line.bounds)
