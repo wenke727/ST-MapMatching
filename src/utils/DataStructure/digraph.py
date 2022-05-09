@@ -1,8 +1,8 @@
+import heapq
+import numpy as np
 import pandas as pd
 import geopandas as gpd
-import numpy as np
-from shapely.geometry import Point
-from collections import defaultdict, deque
+from collections import deque
 
 class Node:
     """
@@ -141,4 +141,86 @@ class Digraph:
     def get_origin_point(self,):
         
         return self.calculate_degree().reset_index().query( "indegree == 0 and outdegree != 0" ).pid.values
+
+
+class DigraphAstar(Digraph):
+    def __init__(self, edges=None, nodes=None, *args, **kwargs):
+        super().__init__(edges, nodes, *args, **kwargs)
+        
+        self.route_planning_memo = {}
+
+
+    def a_star(self, src, dst, max_query_size=2000, max_dist=10000, overwrite=False, plot=False, verbose=False):
+        """Route planning by A star algs
+
+        Args:
+            origin ([type]): [description]
+            dest ([type]): [description]
+            verbose (bool, optional): [description]. Defaults to False.
+            plot (bool, optional): [description]. Defaults to False.
+
+        Returns:
+            dict: The route planning result with path, cost and status.
+            status_dict = {-1: 'unreachable'}
+        """
+        if not overwrite and (src, dst) in self.route_planning_memo:
+            res = self.route_planning_memo[(src, dst)]
+            return res
+        
+        if src not in self.graph or dst not in self.graph:
+            print(f"Edge({src}, {dst})",
+                f"{', origin not in graph' if src not in self.graph else ', '}",
+                f"{', dest not in graph' if dst not in self.graph else ''}")
+            
+            return None
+
+        frontier = [(0, src)]
+        came_from, distance = {}, {}
+        came_from[src] = None
+        distance[src] = 0
+
+        query_size = 0
+        while frontier:
+            _, cur = heapq.heappop(frontier)
+            if cur == dst or query_size > max_query_size:
+                break
+            
+            for nxt in self.graph[cur]:
+                if nxt not in self.graph:
+                    continue
+                
+                new_cost = distance[cur] + self.edge[(cur, nxt)]
+                if nxt not in distance or new_cost < distance[nxt]:
+                    distance[nxt] = new_cost
+                    if distance[nxt] > max_dist:
+                        continue
+
+                    heapq.heappush(frontier, (new_cost + self.cal_nodes_dis(dst, nxt), nxt) )
+                    came_from[nxt] = cur
+            query_size += 1
+
+        if cur != dst:
+            res = {'path': None, 'cost': np.inf, "status": -1} 
+            self.route_planning_memo[(src, dst)] = res
+            return res
+
+        # reconstruct the route
+        route, queue = [dst], deque([dst])
+        while queue:
+            node = queue.popleft()
+            # assert node in came_from, f"({origin}, {dest}), way to {node}"
+            if came_from[node] is None:
+                continue
+            route.append(came_from[node])
+            queue.append(came_from[node])
+        route = route[::-1]
+
+        res = {'path':route, 'cost': distance[dst], 'status':1}
+        self.route_planning_memo[(src, dst)] = res
+
+        if plot:
+            path_lst = gpd.GeoDataFrame([ { 's': route[i], 'e': route[i+1]} for i in range(len(route)-1) ])
+            ax = path_lst.merge(self.df_edges, on=['s', 'e']).plot()
+                    
+        return res
 

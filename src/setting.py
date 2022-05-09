@@ -1,6 +1,15 @@
 """ Global config """
+from pathlib import Path
+""" Global config """
+root = Path(__file__).parent
+
+DEBUG_FOLDER = root / "../debug"
+CACHE_FOLDER = root / "../cache"
+LOG_FOLDER   = root / "../log"
+INPUT_FOLDER = root / "../input"
+
 DIS_FACTOR = 1/110/1000
-DEBUG_FOLDER = "../debug"
+
 GBA_BBOX = [112.471628,  22.138605, 114.424664,  23.565487]
 SZ_BBOX  = [113.746280,  22.441466, 114.623972,  22.864722]
 PCL_BBOX = [113.931914,  22.573536, 113.944456,  22.580613]

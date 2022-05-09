@@ -1,5 +1,5 @@
 import numpy as np
-from utils.geo_helper import get_vertical_dist
+from .geo_helper import get_vertical_dist
 
 
 def dp_compress(point_list, dist_max=8, verbose=False):
@@ -10,7 +10,7 @@ def dp_compress(point_list, dist_max=8, verbose=False):
         dist_max (int, optional): The max . Defaults to 8.
         verbose (bool, optional): [description]. Defaults to False.
     """
-    def _dfs(point_list, start, end, res, dist_max=2):
+    def _dfs(point_list, start, end, res, dist_max):
         # start, end = 0, len(point_list)-1
         if start >= end:
             return

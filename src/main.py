@@ -1,12 +1,16 @@
-from DigraphOSM import load_net_helper, Digraph_OSM
-from matching import st_matching, load_trajectory
-from setting import SZ_BBOX
+from DigraphOSM import DigraphOSM
+from MapMathing import ST_Matching
 
 
-net = load_net_helper(bbox=SZ_BBOX, combine_link=True, convert_to_geojson=True)
+if __name__ == "__main__":
 
-""" matching test"""
-traj = load_trajectory("../input/traj_0.geojson")
-st_matching(traj, net, plot=True)
+    traj_compress=True; traj_thres=None; top_k=None; plot=True; dir_trans=True; plot_scale=5
+    NET = DigraphOSM("Shenzhen", resume='../cache/Shenzhen.pkl')
+    # path = net.route_planning(o=7959990710, d=499265789, plot=True)
 
+    self = ST_Matching(net=NET)
 
+    # github演示数据
+    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/input/traj_0.geojson")
+    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    

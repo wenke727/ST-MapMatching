@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [reconsitution] - 2022-05-09
+
+- 封装`DigraphOSM` 和 `ST_Matching`
+- geo_helper 增加 `point_to_polyline_process`
+- osm_helper 增加 `download_osm_xml`, `parse_xml_to_topo`, `combine_links_parallel_helper`
+
 ## [V1.1] - 2022-01-25
 
 - 修复预测bug

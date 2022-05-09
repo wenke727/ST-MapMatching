@@ -1,190 +1,187 @@
 #%%
 import os
-import xml
-import heapq
 import warnings
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from shapely import wkt
 import geopandas as gpd
-from xml.dom import minidom
-from collections import deque
 import matplotlib.pyplot as plt
 from haversine import haversine, Unit
 from shapely.geometry import Point, LineString, box
 
-from utils.classes import Digraph
-from utils.pickle_helper import PickleSaver
-from utils.log_helper import LogHelper, logbook
+from geo.geo_plot_helper import map_visualize
+from geo.geo_helper import edge_parallel_offset
+from geo.osm_helper import download_osm_xml, parse_xml_to_topo, combine_links_parallel_helper
+
+from utils.pickle_helper import Saver
+from utils.logger_helper import make_logger
 from utils.interval_helper import merge_intervals
-from coords.coordTransfrom_shp import coord_transfer
-from utils.geo_helper import gdf_to_geojson, gdf_to_postgis, edge_parallel_offset
+from utils.parallel_helper import parallel_process
+from utils.DataStructure.digraph import DigraphAstar
+
+from db.db_process import gdf_to_geojson, gdf_to_postgis
 
 from setting import filters as way_filters
-from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX, FT_BBOX
+from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX, FT_BBOX, LOG_FOLDER, CACHE_FOLDER
 
 warnings.filterwarnings('ignore')
 
-
 #%%
-class Digraph_OSM(Digraph):
+
+class DigraphOSM(DigraphAstar, Saver):
     def __init__(self, 
-                 bbox=None,
-                 xml_fn='../input/futian.xml', 
-                 road_info_fn='../input/osm_road_speed.xlsx', 
-                 combine_link=True,
+                 name, 
+                 resume=None, 
+                 bbox=None, 
+                 xml_fn=None, 
+                 combine=True, 
                  reverse_edge=True,
-                 two_way_offeset=True,
-                 logger=None,
-                 upload_to_db='shenzhen',
+                 two_way_offset=True,
+                 road_info_fn='../input/osm_road_speed.csv',
+                 n_jobs=8, 
                  *args, **kwargs):
-        assert not(bbox is None and xml_fn is None), "Please define one of the bbox or the xml path."
+        if resume is not None:
+            if self.resume(resume): 
+                return
+        
+        assert not(bbox is None and xml_fn is None), "Define one of the bbox or the xml path."
+
+        # config
+        self.name     = name
+        self.n_jobs   = n_jobs
+        self.crs_wgs  = 4326
+        self.crs_prj  = 900913
+        self.logger   = make_logger(LOG_FOLDER, "INFO")
+        self.df_nodes = None
+        self.df_edges = None
+        
+        self.road_type_filter   = way_filters['auto']['highway']
+        self.node_pair_dis_memo = {} # self.cal_nodes_dis()
+
         if bbox is not None:
-            xml_fn = f"../cache/osm_{'_'.join(map(str, bbox))}.xml"
-            self.download_map(xml_fn, bbox, True)
-        
-        self.df_nodes, self.df_edges = self.get_road_network(xml_fn, road_info_fn)
-        self.node_dis_memo = {}
-        self.route_planning_memo = {}
-        self.logger = logger
-        super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
+            os.makedirs(CACHE_FOLDER, exist_ok=True)
+            xml_fn = f"{CACHE_FOLDER}/osm_{'_'.join(map(str, bbox))}.xml"
+        assert download_osm_xml(xml_fn, bbox, True), "check `download_osm_xml`"
 
-        self.df_edges.set_crs('EPSG:4326', inplace=True)
-        self.df_nodes.set_crs('EPSG:4326', inplace=True)
-                
-        if combine_link:
-            self.df_edges = self.combine_rids()
-            self.df_edges.reset_index(drop=True, inplace=True)
+        # topo data
+        self.df_nodes, self.df_edges = parse_xml_to_topo(xml_fn, road_info_fn, type_filter=self.road_type_filter, crs=self.crs_wgs)
+        self.traffic_signals = self.df_nodes[~self.df_nodes.traffic_signals.isna()].index.unique()
+        DigraphAstar.__init__(self, self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
+        Saver.__init__(self, f"{CACHE_FOLDER}/{name}.pkl")
 
+        if combine:
+            self.df_edges = self._combine_rids()
         if reverse_edge:
-            self.df_edges = self.add_reverse_edge(self.df_edges)
-            self.df_edges.reset_index(drop=True, inplace=True)
-        
+            self.df_edges = self._add_reverse_edge(self.df_edges)
         self.df_edges.loc[:, 'eid'] = self.df_edges.index
-        if combine_link or reverse_edge:
-            # self.df_nodes = self.df_nodes.loc[ np.unique(np.hstack((self.df_edges.s.values, self.df_edges.e.values))),:]
-            super().__init__(self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
         
-        if two_way_offeset:
-            self.df_edges = self.edge_offset()
+        if combine or reverse_edge:
+            # Warning: The nodes are compressed to speed up
+            DigraphAstar.__init__(self, self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
         
-        order_atts = ['eid', 'rid', 'name', 's', 'e', 'order', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'is_ring', 'geometry', 'geom_origin']
-        self.df_edges = self.df_edges[order_atts]
-
-
-    def download_map(self, fn, bbox, verbose=False):
-        """Download OSM map of bbox from Internet.
-
-        Args:
-            fn (function): [description]
-            bbox ([type]): [description]
-            verbose (bool, optional): [description]. Defaults to False.
-        """
-        if os.path.exists(fn):
-            return
-
-        if verbose:
-            print("Downloading {}".format(fn))
+        if reverse_edge and two_way_offset:
+            self.df_edges = self._edge_offset()
         
-        if isinstance(bbox, list) or isinstance(bbox, np.array):
-            bbox = ",".join(map(str, bbox))
-
-        import requests
-        url = f'http://overpass-api.de/api/map?bbox={bbox}'
-        r = requests.get(url, stream=True)
-        with open(fn, 'wb') as ofile:
-            for chunk in r.iter_content(chunk_size=1024):
-                if chunk:
-                    ofile.write(chunk)
-
-        if verbose:
-            print("Downloaded success.\n")
-
-        return True
+        order_atts = ['eid', 'rid', 'name', 'order', 's', 'e', 'waypoints', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'is_ring', 'geometry', 'geom_origin']
+        self.df_edges = self.df_edges[[i for i in  order_atts if i in self.df_edges.columns]]
+        
+        return
 
 
-    def get_road_network(self, 
-                         fn, 
-                         fn_road, 
-                         in_sys='wgs',
-                         out_sys='wgs', 
-                         signals=True,
-                         road_type_filter=way_filters['auto']['highway'],
-                         keep_cols=['name', 'rid', 'order', 'road_type', 'lanes', 's', 'e',  'dist', 'oneway', 'maxspeed', 'geometry']
-                         ):
-        dom      = xml.dom.minidom.parse(fn)
-        root     = dom.documentElement
-        nodelist = root.getElementsByTagName('node')
-        waylist  = root.getElementsByTagName('way')
+    def resume(self, fn):
+        """ resume Digraph_OSM from the file """
+        if fn is not None and os.path.exists(fn):
+            try:
+                Saver.__init__(self, fn)
+                self._load(fn)
+                self.logger = make_logger(LOG_FOLDER, "INFO")
+                self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
+                self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
+                
+                print(f"load suceess, the pkl was created at {self.create_time}")
+                return True
+            except:
+                print('resume failed')
+        
+        return False
 
-        # nodes
-        nodes = []
-        for node in tqdm(nodelist, 'Parse nodes: \t'):
-            pid = node.getAttribute('id')
-            taglist = node.getElementsByTagName('tag')
-            info = {'pid': int(pid),
-                    'y':float(node.getAttribute('lat')), 
-                    'x':float(node.getAttribute('lon'))}
+
+    def save(self):
+        self._save()
+
+
+    def route_planning(self, o, d, plot=False, *args, **kwargs):
+        route = self.a_star(o, d, *args, **kwargs)
+        route['gdf'] = self.node_seq_to_df_edge(route['path'])
+        
+        if plot:
+            map_visualize(route['gdf'])
+            plt.show()
+        
+        return route
+
+
+    def cal_nodes_dis(self, o, d):
+        assert o in self.node and d in self.node, "Check the input o and d."
+        if (o, d) in self.node_pair_dis_memo:
+            return self.node_pair_dis_memo[(o, d)]
+        
+        return haversine((self.node[o]['y'], self.node[o]['x']), (self.node[d]['y'], self.node[d]['x']), unit=Unit.METERS)
+
+
+    def to_postgis(self, name):
+        try:
+            gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
+            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
             
-            for tag in taglist:
-                if tag.getAttribute('k') == 'traffic_signals':
-                    info['traffic_signals'] = tag.getAttribute('v')
+            self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
+            self.df_nodes = self.df_nodes[['nid', 'x', 'y', 'traffic_signals', 'geometry']]
+            gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
+            return True
+        except:
+            if self.logger is not None:
+                self.logger.error('upload data error.')
+        
+        return False
+
+
+    def to_csv(self, name, folder = None):
+        try:
+            edge_fn = f'topo_osm_{name}_edge.csv'
+            node_fn = f'topo_osm_{name}_endpoint.csv'
             
-            nodes.append(info)
-                    
-        nodes = gpd.GeoDataFrame(nodes)
-        nodes.loc[:, 'geometry'] = nodes.apply(lambda i: Point(i.x, i.y), axis=1)
-        # FIXME "None of ['pid'] are in the columns"
-        nodes.set_index('pid', inplace=True)
-
-        if in_sys != out_sys:
-            nodes = coord_transfer(nodes, in_sys, out_sys)
-            nodes.loc[:,['x']], nodes.loc[:,['y']] = nodes.geometry.x, nodes.geometry.y
-
-        # traffic_signals
-        self.traffic_signals = nodes[~nodes.traffic_signals.isna()].index.unique()
-        
-        # edges
-        edges = []
-        for way in tqdm(waylist, 'Parse ways: \t'):
-            taglist = way.getElementsByTagName('tag')
-            info = { tag.getAttribute('k'): tag.getAttribute('v') for tag in taglist }
-            if 'highway' not in info or info['highway'] in road_type_filter:
-                continue
+            if folder is not None:
+                edge_fn = os.path.join(edge_fn, edge_fn)
+                node_fn = os.path.join(edge_fn, node_fn)
             
-            info['rid'] = int(way.getAttribute('id'))
-            ndlist = way.getElementsByTagName('nd')
-            nds = []
-            for nd in ndlist:
-                nd_id = nd.getAttribute('ref')
-                nds.append( nd_id )
-            for i in range( len(nds)-1 ):
-                edges.append( { 'order': i, 's':nds[i], 'e':nds[i+1], 'road_type': info['highway'], **info} )
-
-        edges = pd.DataFrame( edges )
-        edges.loc[:, ['s','e']] = pd.concat((edges.s.astype(np.int), edges.e.astype(np.int)), axis=1)
-
-        edges = edges.merge( nodes[['x','y']], left_on='s', right_index=True ).rename(columns={'x':'x0', 'y':'y0'}) \
-                     .merge( nodes[['x','y']], left_on='e', right_index=True ).rename(columns={'x':'x1', 'y':'y1'})
-        edges = gpd.GeoDataFrame( edges, geometry = edges.apply( lambda i: LineString( [[i.x0, i.y0], [i.x1, i.y1]] ), axis=1 ) )
-        edges.loc[:, 'dist'] = edges.apply(lambda i: haversine((i.y0, i.x0), (i.y1, i.x1), unit=Unit.METERS), axis=1)
-        edges.sort_values(['rid', 'order'], inplace=True)
-
-        # nodes filter
-        ls = np.unique(np.hstack((edges.s.values, edges.e.values)))
-        nodes = nodes.loc[ls,:]
-
-        if fn_road and os.path.exists(fn_road):
-            road_speed = pd.read_excel(fn_road)[['road_type', 'v']]
-            edges = edges.merge( road_speed, on ='road_type' )
+            df_edges = self.df_edges.copy()
+            atts = ['eid', 'rid', 'name', 's', 'e', 'order', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'geom_origin']
+            pd.DataFrame(df_edges[atts].rename({'geom_origin': 'geom'})).to_csv(edge_fn, index=False)
+            
+            df_nodes = self.df_nodes.copy()
+            df_nodes.loc[:, 'nid'] = df_nodes.index
+            df_nodes.loc[:, 'geom'] = df_nodes.geometry.apply(lambda x: x.to_wkt())
+            
+            atts = ['nid', 'x', 'y', 'traffic_signals', 'geometry']
+            pd.DataFrame(df_nodes[atts].rename({'geom_origin': 'geom'})).to_csv(node_fn, index=False)
+            
+            return True
+        except:
+            if self.logger is not None:
+                self.logger.error('upload data error.')
         
-        keep_cols = [i for i in keep_cols if i in edges.columns]
-        
-        return nodes, edges[keep_cols]
+        return False
 
 
-    def add_reverse_edge(self, df_edges):
+    @property
+    def df_node_with_degree(self,):
+        # Returns the point layer of topology data.
+        return self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
+
+
+    """ aux func """
+    def _add_reverse_edge(self, df_edges):
         """Add reverse edge.
 
         Args:
@@ -214,19 +211,19 @@ class Digraph_OSM(Digraph):
 
         df_edges.oneway = df_edges.oneway.fillna('no').apply(_juedge_oneway)
         df_edges.loc[:, 'is_ring'] = df_edges.geometry.apply( lambda x: x.is_ring)
+        df_edges.loc[:, 'dir'] = 1
 
         df_edge_rev = df_edges.query('oneway == False and not is_ring')
-        df_edge_rev.loc[:, 'order']    = -df_edge_rev.order - 1
-        df_edge_rev.loc[:, 'geometry'] =  df_edge_rev.geometry.apply( lambda x: LineString(x.coords[::-1]) )
+        df_edge_rev.loc[:, 'dir']       = -1
+        df_edge_rev.loc[:, 'order']     = -df_edge_rev.order - 1
+        df_edge_rev.loc[:, 'geometry']  =  df_edge_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
+        df_edge_rev.loc[:, 'waypoints'] =  df_edge_rev.waypoints.apply(lambda x: ",".join(x.split(",")[::-1]))
         df_edge_rev.rename(columns={'s':'e', 'e':'s'}, inplace=True)
-
-        df_edge_rev.loc[:, 'dir'] = -1
-        df_edges.loc[:, 'dir'] = 1
 
         return df_edges.append(df_edge_rev).reset_index(drop=True)
 
 
-    def get_intermediate_point(self):
+    def _get_not_node_points(self):
         """Identify the road segment with nodes of 1 indegree and 1 outdegree. 
 
         Returns:
@@ -235,64 +232,37 @@ class Digraph_OSM(Digraph):
         return self.degree.query( "indegree == 1 and outdegree == 1" ).index.unique().tolist()
     
 
-    def combine_links_of_rid(self, rid, omit_rids, df_edges, plot=False, save_folder=None):
-        """Combine OSM link.
-
-        Args:
-            rid (int): The id of link in OSM.
-            omit_rids (df): Subset of df_edges, the start point shoule meet: 1) only has 1 indegree and 1 outdegree; 2) not the traffic_signals point.
-            df_edges (df, optional): [description]. Defaults to net.df_edges.
-
-        Returns:
-            pd.DataFrame: The links after combination.
-        
-        Example:
-            `new_roads = combine_links_of_rid(rid=25421053, omit_rids=omit_rids, plot=True, save_folder='../cache')`
-        """
-        new_roads = df_edges.query(f"rid == @rid").set_index('order')
-        combine_orders = omit_rids.query(f"rid == @rid").order.values
-        combine_seg_indxs = merge_intervals([[x-1, x] for x in combine_orders if x > 0])
-
-        drop_index = []
-        for start, end, _ in combine_seg_indxs:
-            segs = new_roads.query(f"{start} <= order <= {end}")
-            pids = np.append(segs.s.values, segs.iloc[-1]['e'])
-
-            new_roads.loc[start, 'geometry'] = LineString([[self.node[p]['x'], self.node[p]['y']] for p in pids])
-            new_roads.loc[start, 'dist'] = segs.dist.sum()
-            new_roads.loc[start, 'e'] = segs.iloc[-1]['e']
-
-            drop_index += [ i for i in range(start+1, end+1) ]
-
-        new_roads.drop(index=drop_index, inplace=True)
-        new_roads.reset_index(inplace=True)
-
-        if save_folder is not None:
-            gdf_to_geojson(new_roads, os.path.join(save_folder, f"road_{rid}_after_combination.geojson"))
-        
-        if plot:
-            new_roads.plot()
-        
-        return new_roads
-
-
-    def combine_rids(self, ):
-        omit_pids = [ x for x in self.get_intermediate_point() if x not in self.traffic_signals ]
+    def _combine_rids(self):
+        omit_pids    = [x for x in self._get_not_node_points() if x not in self.traffic_signals]
         omit_records = self.df_edges.query( f"s in @omit_pids" )
-        omit_rids = omit_records.rid.unique().tolist()
+        omit_rids    = omit_records.rid.unique().tolist()
         keep_records = self.df_edges.query( f"rid not in @omit_rids" )
 
-        res = []
-        for rid in tqdm(omit_rids, 'Combine links: \t'):
-            res.append(self.combine_links_of_rid(rid, omit_records, self.df_edges))
+        omit_pid_dict = omit_records.sort_values(by=["rid", 'order']).groupby('rid').order.apply(list).to_dict()
 
-        comb_rids = gpd.GeoDataFrame(pd.concat(res))
-        comb_rids = keep_records.append(comb_rids).reset_index(drop=True)
+        """ Data Parallel """
+        df = self.df_edges.query("rid in @omit_rids").sort_values(by=['rid', 'order'])
+        df.loc[:, 'part'] = df.rid % self.n_jobs
+        df_parts = df.groupby('part')
+
+        res = parallel_process(combine_links_parallel_helper, zip(df_parts, [self.df_nodes]*len(df_parts), [omit_pid_dict]*len(df_parts)), n_jobs=self.n_jobs)
+        comb_rids = gpd.GeoDataFrame(pd.concat(res), crs=f"EPSG:{self.crs_wgs}")
+
+        keep_records.loc[:, 'waypoints'] = keep_records.apply(lambda x: f"{x.s},{x.e}",axis=1)
+        comb_rids = comb_rids.append(keep_records, sort=['rid', 'order'], ignore_index=True)[list(keep_records)]
+        
+        # origin function 
+        # res = []
+        # for rid in tqdm(omit_rids, 'Combine links \t'):
+        #     res.append(self.combine_links_of_rid(rid, omit_records, self.df_edges))
+
+        # comb_rids = gpd.GeoDataFrame(pd.concat(res), crs=f"EPSG:{self.crs_wgs}")
+        # comb_rids = keep_records.append(comb_rids).reset_index(drop=True)
 
         return comb_rids
 
 
-    def edge_offset(self,):
+    def _edge_offset(self,):
         df_edge = self.df_edges.copy()
         
         df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
@@ -302,138 +272,8 @@ class Digraph_OSM(Digraph):
         return df_edge
 
 
-    def cal_nodes_dis(self, o, d):
-        assert o in self.node and d in self.node, "Check the input o and d."
-        if (o, d) in self.node_dis_memo:
-            return self.node_dis_memo[(o, d)]
-        
-        return haversine((self.node[o]['y'], self.node[o]['x']), (self.node[d]['y'], self.node[d]['x']), unit=Unit.METERS)
-
-
-    def a_star(self, origin, dest, max_layer=500, max_dist=10**4, verbose=False, plot=False):
-        """Route planning by A star algm
-
-        Args:
-            origin ([type]): [description]
-            dest ([type]): [description]
-            verbose (bool, optional): [description]. Defaults to False.
-            plot (bool, optional): [description]. Defaults to False.
-
-        Returns:
-            dict: The route planning result with path, cost and status.
-            status_dict = {-1: 'unreachable'}
-        """
-        if (origin, dest) in self.route_planning_memo:
-            res = self.route_planning_memo[(origin, dest)]
-            return res
-        
-        if origin not in self.graph or dest not in self.graph:
-            # print(f"Edge({origin}, {dest})",
-                # f"{', origin not in graph' if origin not in self.graph else ', '}",
-                # f"{', dest not in graph' if dest not in self.graph else ''}")
-            return None
-
-        frontier = [(0, origin)]
-        came_from, distance = {}, {}
-        came_from[origin] = None
-        distance[origin] = 0
-
-        layer = 0
-        while frontier:
-            _, cur = heapq.heappop(frontier)
-            if cur == dest or layer > max_layer:
-                break
-            
-            for nxt in self.graph[cur]:
-                if nxt not in self.graph:
-                    continue
-                
-                new_cost = distance[cur] + self.edge[(cur, nxt)]
-                if nxt not in distance or new_cost < distance[nxt]:
-                    distance[nxt] = new_cost
-                    if distance[nxt] > max_dist:
-                        continue
-
-                    heapq.heappush(frontier, (new_cost+self.cal_nodes_dis(dest, nxt), nxt) )
-                    came_from[nxt] = cur
-            layer += 1
-
-        if cur != dest:
-            res = {'path': None, 'cost': np.inf, "status": -1} 
-            self.route_planning_memo[(origin, dest)] = res
-            return res
-
-        # reconstruct the route
-        route, queue = [dest], deque([dest])
-        while queue:
-            node = queue.popleft()
-            # assert node in came_from, f"({origin}, {dest}), way to {node}"
-            if came_from[node] is None:
-                continue
-            route.append(came_from[node])
-            queue.append(came_from[node])
-        route = route[::-1]
-
-        res = {'path':route, 'cost': distance[dest], 'status':1}
-        self.route_planning_memo[(origin, dest)] = res
-
-        if plot:
-            path_lst = gpd.GeoDataFrame([ { 's': route[i], 'e': route[i+1]} for i in range(len(route)-1) ])
-            ax = path_lst.merge(self.df_edges, on=['s', 'e']).plot()
-                    
-        return res
-
-
-    @property
-    def df_node_with_degree(self,):
-        # Returns the point layer of topology data.
-        return self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
-
-
-    def upload_topo_data_to_db(self, name):
-        try:
-            gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
-            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
-            
-            self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
-            self.df_nodes = self.df_nodes[['nid', 'x', 'y', 'traffic_signals', 'geometry']]
-            gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
-            return True
-        except:
-            if self.logger is not None:
-                logger.error('upload data error.')
-        
-        return False
-
-    def to_csv(self, name, folder = None):
-        try:
-            edge_fn = f'topo_osm_{name}_edge.csv'
-            node_fn = f'topo_osm_{name}_endpoint.csv'
-            
-            if folder is not None:
-                edge_fn = os.path.join(edge_fn, edge_fn)
-                node_fn = os.path.join(edge_fn, node_fn)
-            
-            df_edges = self.df_edges.copy()
-            atts = ['eid', 'rid', 'name', 's', 'e', 'order', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'geom_origin']
-            pd.DataFrame(df_edges[atts].rename({'geom_origin': 'geom'})).to_csv(edge_fn, index=False)
-            
-            df_nodes = self.df_nodes.copy()
-            df_nodes.loc[:, 'nid'] = df_nodes.index
-            df_nodes.loc[:, 'geom'] = df_nodes.geometry.apply(lambda x: x.to_wkt())
-            
-            atts = ['nid', 'x', 'y', 'traffic_signals', 'geometry']
-            pd.DataFrame(df_nodes[atts].rename({'geom_origin': 'geom'})).to_csv(node_fn, index=False)
-            
-            return True
-        except:
-            if self.logger is not None:
-                logger.error('upload data error.')
-        
-        return False
-
-
-    def node_sequence_to_edge(self, node_lst, on=['s', 'e'], attrs=None):
+    """ API """
+    def node_seq_to_df_edge(self, node_lst, on=['s', 'e'], attrs=None):
         """Convert the id sequence of nodes into an ordered edges. 
 
         Args:
@@ -443,6 +283,9 @@ class Digraph_OSM(Digraph):
         Returns:
             [type]: [description]
         """
+        if len(node_lst) <= 1:
+            return None
+        
         df = gpd.GeoDataFrame([ {on[0]: node_lst[i], on[1]: node_lst[i+1]} for i in range(len(node_lst)-1) ])
         
         if attrs is None:
@@ -451,53 +294,93 @@ class Digraph_OSM(Digraph):
         return df.merge(self.df_edges, on=on)[attrs]
 
 
-def load_net_helper(bbox=None, xml_fn=None, combine_link=True, overwrite=False, reverse_edge=True, cache_folder='../cache', convert_to_geojson=False, logger=None, two_way_offeset=True):
-    # parse xml to edge and node with/without combiantion
-    if xml_fn is not None:
-        net = Digraph_OSM(xml_fn=xml_fn, combine_link=combine_link)
-        return net
-    
-    # Read Digraph_OSM object from file
-    assert isinstance(bbox, list), 'Check input bbox'
-    
-    bbox_str = '_'.join(map(str, bbox))
-    fn = os.path.join(cache_folder, f"net_{bbox_str}.pkl")
-    s = PickleSaver()
-    
-    if os.path.exists(fn) and not overwrite:
-        net = s.read(fn)
-        net.df_edges.geom_origin = net.df_edges.geom_origin.apply(wkt.loads)
-    else:
-        net = Digraph_OSM(bbox=bbox, combine_link=combine_link, reverse_edge=reverse_edge, two_way_offeset=two_way_offeset, logger=logger)
-        s.save(net, fn)
-        if convert_to_geojson:
-            gdf_to_geojson(net.df_edges, f'../cache/edges_{bbox_str}')
-            gdf_to_geojson(net.df_nodes, f'../cache/nodes_{bbox_str}')
-    
-    return net
+    def node_seq_to_polyline(self, node_lst:list):
+        """Create Linestring by node id sequence.
 
+        Args:
+            path (list): The id sequence of Coordinations.
+            net (Digraph_OSM): The Digraph_OSM object.
+
+        Returns:
+            Linestring: The linstring of the speicla sequence.
+        """
+        if node_lst is None or len(node_lst) <= 1 or np.isnan(node_lst).all():
+            return None
+        
+        points = np.array([self.od_to_coords[(node_lst[i], node_lst[i+1])]for i in range(len(node_lst)-1)])
+        res = list(points[0])
+        for ps in points[1:]:
+            res += list(ps[1:])
+        
+        return LineString(res)       
+        
+
+    def get_edge(self, eid, att=None):
+        """Get edge by eid [0, n]"""
+        res = self._get_feature('df_edges', eid, att)
+        if att == 'waypoints':
+            res = [int(i) for i in res.split(",")]
+            
+            return res
+        
+        return res
+
+
+    def get_node(self, nid, att=None):
+        return self._get_feature('df_nodes', nid, att)
+    
+
+    def _get_feature(self, df_name, id, att=None):
+        """get edge by id.
+
+        Args:
+            id (_type_): _description_
+            att (_type_, optional): _description_. Defaults to None.
+
+        Returns:
+            _type_: _description_
+        """
+        df = getattr(self, df_name)
+        if df is None:
+            print(f"Dosn't have the attibute {df_name}")
+            return None
+
+        if isinstance(id, int) and id not in df.index:
+            return None
+
+        if isinstance(id, list) or isinstance(id, tuple) or isinstance(id, np.ndarray):
+            for i in id:
+                if i not in df.index:
+                    return None
+        
+        res = df.loc[id]
+        return res if att is None else res[att]
+        
+
+    def merge_edge(self, df, on=['s', 'e']):
+        return self.df_edges.merge(df, on=on)
+
+
+    def spatial_query(self, geofence, name='df_edges', predicate='intersects'):
+        gdf = getattr(self, name)
+        
+        return gdf.sindex.query(geofence, predicate=predicate)
+        
 
 #%%
 if __name__ == '__main__':
-    FT_BBOX  = [114.02874162861015, 22.52426853077481, 114.06680715668308, 22.56334823810368]
-    logger = LogHelper(log_name='digraph_osm.log', log_dir='../log', stdOutFlag=False).make_logger(level=logbook.INFO)
-    net = load_net_helper(
-        bbox=SZ_BBOX, 
-        overwrite=False, 
-        logger=logger,
-        combine_link=True, 
-        reverse_edge=True, 
-        two_way_offeset=True, 
-    )
-    # net.upload_topo_data_to_db('shenzhen')
+    # create new network
+    net = DigraphOSM("Shenzhen", bbox=PCL_BBOX)
+    net.save()
 
-    
-    # """ a_star algorithm test """
-    path = net.a_star(1491845212, 1116467141, max_layer=10**5, max_dist=20**7)
+    # Resume from pkl
+    net = DigraphOSM("Shenzhen", resume='../cache/Shenzhen.pkl')
 
-    """ construct trajectories """ 
-    # gdf_path = net.node_sequence_to_edge(path['path'])
+    # route planning  
+    path = net.route_planning(o=7959990710, d=499265789, plot=True)
+
+    # save data to db
+    net.to_postgis('shenzhen')
+
 
 # %%
-
-
