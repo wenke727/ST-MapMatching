@@ -3,12 +3,11 @@ import os
 import warnings
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from shapely import wkt
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from haversine import haversine, Unit
-from shapely.geometry import Point, LineString, box
+from shapely.geometry import LineString
 
 from geo.geo_plot_helper import map_visualize
 from geo.geo_helper import edge_parallel_offset
@@ -16,11 +15,10 @@ from geo.osm_helper import download_osm_xml, parse_xml_to_topo, combine_links_pa
 
 from utils.pickle_helper import Saver
 from utils.logger_helper import make_logger
-from utils.interval_helper import merge_intervals
 from utils.parallel_helper import parallel_process
 from utils.DataStructure.digraph import DigraphAstar
 
-from db.db_process import gdf_to_geojson, gdf_to_postgis
+from db.db_process import gdf_to_postgis
 
 from setting import filters as way_filters
 from setting import SZ_BBOX, GBA_BBOX, PCL_BBOX, FT_BBOX, LOG_FOLDER, CACHE_FOLDER
@@ -85,6 +83,7 @@ class DigraphOSM(DigraphAstar, Saver):
         
         order_atts = ['eid', 'rid', 'name', 'order', 's', 'e', 'waypoints', 'road_type', 'dir', 'lanes', 'dist', 'oneway', 'is_ring', 'geometry', 'geom_origin']
         self.df_edges = self.df_edges[[i for i in  order_atts if i in self.df_edges.columns]]
+        self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
         
         return
 
@@ -97,7 +96,8 @@ class DigraphOSM(DigraphAstar, Saver):
                 self._load(fn)
                 self.logger = make_logger(LOG_FOLDER, "INFO")
                 self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
-                self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
+                if not hasattr(self, "od_to_coords"):
+                    self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
                 
                 print(f"load suceess, the pkl was created at {self.create_time}")
                 return True
@@ -265,7 +265,8 @@ class DigraphOSM(DigraphAstar, Saver):
     def _edge_offset(self,):
         df_edge = self.df_edges.copy()
         
-        df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
+        df_edge.loc[:, 'geom_origin'] = df_edge.geometry.copy()
+        # df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
         geom_offset = df_edge[~df_edge.oneway].apply( lambda x: edge_parallel_offset(x, logger=self.logger), axis=1 )
         df_edge.loc[geom_offset.index, 'geometry'] = geom_offset
 
@@ -370,7 +371,7 @@ class DigraphOSM(DigraphAstar, Saver):
 #%%
 if __name__ == '__main__':
     # create new network
-    net = DigraphOSM("Shenzhen", bbox=PCL_BBOX)
+    net = DigraphOSM("PCL", bbox=PCL_BBOX)
     net.save()
 
     # Resume from pkl

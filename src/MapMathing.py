@@ -19,20 +19,6 @@ from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAng
 
 from setting import DEBUG_FOLDER, DIS_FACTOR
 
-#%%
-
-def cos_similarity(self, path_, v_cal=30):
-    # TODO cos similarity for speed
-    # path_ = [5434742616, 7346193109, 7346193114, 5434742611, 7346193115, 5434742612, 7346193183, 7346193182]
-    seg = [[path_[i-1], path_[i]] for i in range(1, len(path_))]
-    v_roads = pd.DataFrame(seg, columns=['s', 'e']).merge(self.edges,  on=['s', 'e']).v.values
-    
-    num = np.sum(v_roads.T * v_cal)
-    denom = np.linalg.norm(v_roads) * np.linalg.norm([v_cal for x in v_roads])
-    cos = num / denom  # 余弦值
-    
-    return cos
-
 
 #%%
 
@@ -657,62 +643,72 @@ class ST_Matching(Trajectory):
         return graph
 
 
+def cos_similarity(self, path_, v_cal=30):
+    # TODO cos similarity for speed
+    # path_ = [5434742616, 7346193109, 7346193114, 5434742611, 7346193115, 5434742612, 7346193183, 7346193182]
+    seg = [[path_[i-1], path_[i]] for i in range(1, len(path_))]
+    v_roads = pd.DataFrame(seg, columns=['s', 'e']).merge(self.edges,  on=['s', 'e']).v.values
+    
+    num = np.sum(v_roads.T * v_cal)
+    denom = np.linalg.norm(v_roads) * np.linalg.norm([v_cal for x in v_roads])
+    cos = num / denom  # 余弦值
+    
+    return cos
+
 
 #%%
 if __name__ == "__main__":
-
-    traj_compress=True; traj_thres=None; top_k=None; plot=True; dir_trans=True; plot_scale=5
-    NET = DigraphOSM("Shenzhen", resume='../cache/Shenzhen.pkl')
+    NET = DigraphOSM("Shenzhen", resume='../input/Shenzhen.pkl')
     # path = net.route_planning(o=7959990710, d=499265789, plot=True)
 
     self = ST_Matching(net=NET)
 
     # github演示数据
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/input/traj_0.geojson")
+    traj = self.load_points("../input/traj_0.geojson")
     path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
     
     # 真实车辆移动轨迹
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/input/traj_1.geojson")
+    traj = self.load_points("../input/traj_1.geojson")
     path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
     
     # 测试：压缩算法
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_199.geojson")
+    traj = self.load_points("../input/test/traj_debug_199.geojson")
     path = self.matching(traj, plot=True)
 
     # 测试：起点和终点同个路段
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_200.geojson")
+    traj = self.load_points("../input/test/traj_debug_200.geojson")
     path = self.matching(traj, plot=True)
 
     # 测试，仅两个点，中兴公寓 
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_7.geojson")
+    traj = self.load_points("../input/test/traj_debug_7.geojson")
     path = self.matching(traj, plot=True, top_k=3, dir_trans=False, plot_scale=5)
 
     # 测试, 打石一路车道右转专用道拐弯
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_20.geojson")
+    traj = self.load_points("../input/test/traj_debug_20.geojson")
     path = self.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=5)
 
     # 测试, 打石一路反向车道测试
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_141.geojson")
+    traj = self.load_points("../input/test/traj_debug_141.geojson")
     path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=5)  
   
     # 测试, 深南大道
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_case1.geojson")
+    traj = self.load_points("../input/test/traj_debug_case1.geojson")
     path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
     
     # 测试, 小支路测试
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_case2.geojson")
+    traj = self.load_points("../input/test/traj_debug_case2.geojson")
     path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
     # 测试, 深南大道市民中心段测试
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_rid.geojson")
+    traj = self.load_points("../input/test/traj_debug_rid.geojson")
     path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
     # 测试，打石一路
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug_dashiyilu_0.geojson")
+    traj = self.load_points("../input/test/traj_debug_dashiyilu_0.geojson")
     path = self.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
 
     # 测试，本身畸形的数据
-    traj = self.load_points("/home/pcl/traffic/MatchGPS2OSM/debug/traj_debug.geojson")
+    traj = self.load_points("../input/test/traj_debug.geojson")
     path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
 

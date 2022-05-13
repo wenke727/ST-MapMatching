@@ -59,6 +59,7 @@ def gdf_gcj_to_wgs(gdf):
     return gdf
 
 def coord_transfer( res, in_sys = 'gcj', out_sys = 'wgs' ):
+    assert in_sys in ['gcj', 'wgs'] and out_sys in ['gcj', 'wgs'], "check coordination system"
     if in_sys != out_sys:
         if in_sys == 'gcj':
             res = gdf_gcj_to_wgs(res)
