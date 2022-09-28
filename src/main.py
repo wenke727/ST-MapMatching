@@ -4,9 +4,9 @@ from MapMathing import ST_Matching
 if __name__ == "__main__":
     # step 1: 获取/加载道路网络
     from setting import PCL_BBOX
-    network = DigraphOSM("PCL", bbox=PCL_BBOX)
+    # network = DigraphOSM("PCL", bbox=PCL_BBOX)
     # 预处理 深圳市network, 导入代码如下
-    # network = DigraphOSM("Shenzhen", resume='../input/ShenzhenNetwork.pkl')
+    network = DigraphOSM("Shenzhen", resume='../input/ShenzhenNetwork.pkl')
     
     # step 2: 创建地图匹配 matcher
     matcher = ST_Matching(net=network)

@@ -90,19 +90,19 @@ class DigraphOSM(DigraphAstar, Saver):
 
     def resume(self, fn):
         """ resume Digraph_OSM from the file """
-        if fn is not None and os.path.exists(fn):
-            try:
-                Saver.__init__(self, fn)
-                self._load(fn)
-                self.logger = make_logger(LOG_FOLDER, "INFO")
-                self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
-                if not hasattr(self, "od_to_coords"):
-                    self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
-                
-                print(f"load suceess, the pkl was created at {self.create_time}")
-                return True
-            except:
-                print('resume failed')
+        assert os.path.exists(fn), "Double check the file"
+        try:
+            Saver.__init__(self, fn)
+            self._load(fn)
+            self.logger = make_logger(LOG_FOLDER, "INFO")
+            self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
+            if not hasattr(self, "od_to_coords"):
+                self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
+            
+            print(f"load suceess, the pkl was created at {self.create_time}")
+            return True
+        except:
+            print('resume failed')
         
         return False
 

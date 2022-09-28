@@ -1,8 +1,7 @@
 """ Global config """
 from pathlib import Path
-""" Global config """
-root = Path(__file__).parent
 
+root = Path(__file__).parent
 DEBUG_FOLDER = root / "../debug"
 CACHE_FOLDER = root / "../cache"
 LOG_FOLDER   = root / "../log"

@@ -129,9 +129,11 @@ class ST_Matching(Trajectory):
     def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False):
         cands = self.get_candidates(traj, self.cand_search_radius, top_k=top_k, plot=False)
         
+        # No matched
         if cands is None:
             return None
-        if traj.shape[0] == 1: 
+        # Only one single point matched
+        if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
             path = self.net.get_edge(eid)
             return path
@@ -465,12 +467,24 @@ class ST_Matching(Trajectory):
             path.loc[0, 'geometry'] = LineString(coords)
         else:
             path.loc[0, 'geometry'], path.loc[n, 'geometry'] = LineString(step_0), LineString(step_n)
+            # filter empty geometry
+            path = path[~path.geometry.is_empty]
             path.loc[0, 'memo'], path.loc[n, 'memo'] = 'first step', 'last step'
+        
 
         # connector
         p_0, p_n = traj.iloc[0].geometry, traj.iloc[-1].geometry
-        connector_0 = LineString([(p_0.x, p_0.y), path.loc[0, 'geometry'].coords[0]])
-        connector_1 = LineString([path.loc[n, 'geometry'].coords[-1], (p_n.x, p_n.y)])
+        print(traj)
+        # BUG path 的 geometry 为空
+        try:
+            connector_0 = LineString([(p_0.x, p_0.y), path.loc[0, 'geometry'].coords[0]])
+        except:
+            connector_0 = LineString([(p_0.x, p_0.y), (p_0.x, p_0.y)])
+        try:
+            connector_1 = LineString([path.loc[n, 'geometry'].coords[-1], (p_n.x, p_n.y)])
+        except:
+            connector_1 = LineString([(p_n.x, p_n.y), (p_n.x, p_n.y)])
+            
         connectors = gpd.GeoDataFrame({
             'geometry': [
                 connector_0, 

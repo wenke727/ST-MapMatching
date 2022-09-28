@@ -67,7 +67,7 @@ path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01
 注:
 
 1. 示例输入对应`input/traj_0.geojson`，在`vscode`中可借助插件`Geo Data Viewer`可视化;
-2. 输入轨迹点的坐标系默认为 wgs84, gcj02的轨迹需在调用函数`load_points`加载明确坐标系`in_sys=gcj`,
+2. 输入轨迹点的坐标系默认为 wgs84, gcj02的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`,
 
 ### 输出示例
 
@@ -101,5 +101,5 @@ conda install geopandas==0.8.1
 ## Ref
 
 - batched compression algorithm
-  [轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
-  [基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)
+  - [轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
+  - [基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)

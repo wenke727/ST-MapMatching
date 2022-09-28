@@ -1,0 +1,13 @@
+{
+"type": "FeatureCollection",
+"name": "traj_debug_dashiyilu_0",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "index": 0, "PID": "09005700121709091547447799Y", "DIR": 126, "Order": 0, "Type": "street", "X": 1268428106, "Y": 256456350, "RID": "81ce8c-d832-1db9-61dc-ee8b61", "MoveDir": 124, "dir_sim": 0.99964534332822241, "revert": false, "pid_order": 0 }, "geometry": { "type": "Point", "coordinates": [ 113.931956598012064, 22.575930582940785 ] } },
+{ "type": "Feature", "properties": { "index": 1, "PID": "1", "DIR": 106, "Order": 2, "Type": "street", "X": 1268436351, "Y": 256452423, "RID": "e03ca1-a0bd-f8ba-e8b6-f42f8f", "MoveDir": 106, "dir_sim": null, "revert": false, "pid_order": 6 }, "geometry": { "type": "Point", "coordinates": [ 113.932515057750763, 22.575632036146079 ] } },
+{ "type": "Feature", "properties": { "index": 7, "PID": "09005700121709091547560449Y", "DIR": 106, "Order": 2, "Type": "street", "X": 1268436351, "Y": 256452423, "RID": "e03ca1-a0bd-f8ba-e8b6-f42f8f", "MoveDir": 106, "dir_sim": null, "revert": false, "pid_order": 7 }, "geometry": { "type": "Point", "coordinates": [ 113.932920306714124, 22.575490522559665 ] } },
+{ "type": "Feature", "properties": { "index": 15, "PID": "09005700121709091548069209Y", "DIR": 95, "Order": 2, "Type": "street", "X": 1268445444, "Y": 256450532, "RID": "ce6e7e-7263-e9af-a5fb-dc8582", "MoveDir": 95, "dir_sim": null, "revert": false, "pid_order": 15 }, "geometry": { "type": "Point", "coordinates": [ 113.933781789624888, 22.575346314537452 ] } },
+{ "type": "Feature", "properties": { "index": 101, "PID": "09005700121709091551224079Y", "DIR": 92, "Order": 4, "Type": "street", "X": 1268551143, "Y": 256448826, "RID": "025131-7415-f096-fb9f-ec2bf0", "MoveDir": 92, "dir_sim": null, "revert": false, "pid_order": 101 }, "geometry": { "type": "Point", "coordinates": [ 113.943190113338488, 22.575121559997108 ] } },
+{ "type": "Feature", "properties": { "index": 108, "PID": "09005700121709091551348359Y", "DIR": 0, "Order": 3, "Type": "street", "X": 1268558107, "Y": 256449791, "RID": "690002-535e-1613-f0b2-077d39", "MoveDir": 70, "dir_sim": null, "revert": false, "pid_order": 108 }, "geometry": { "type": "Point", "coordinates": [ 113.943816093693101, 22.575196482404341 ] } }
+]
+}

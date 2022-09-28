@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*.pkl
 *$py.class
 
 # C extensions
@@ -13,8 +14,10 @@ cache
 log
 
 # Distribution / packaging
+.vscode/
+test/
+api/
 rsrc
-input
 .Python
 build/
 develop-eggs/

@@ -237,6 +237,7 @@ def point_to_polyline_process(point:Point, polyline:LineString, plot=False, coor
         'dist_lst': dist_lst, 
         'line_length': line_length,
         'split_idx': split_idx,
+        'distance': dist_lst[split_idx], # 点到多折线的距离
         'seg_0': seg_0,
         'seg_1': seg_1,
         'len_0': len_0,
@@ -275,7 +276,7 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     tmp = gpd.GeoSeries([point, polyline]).set_crs(in_crs, allow_override=True).to_crs(out_crs)
     p_, l_ = tmp.loc[0], tmp.loc[1]
     
-    res = point_to_polyline_process(p_, l_, plot=plot)
+    res = point_to_polyline_process(p_, l_, coord_sys=True, plot=plot)
     
     helper = lambda x: LineString(x) if x is not None else LineString([])
     tmp = gpd.GeoSeries([helper(res['seg_0']), helper(res['seg_1'])]).set_crs(out_crs, allow_override=True).to_crs(in_crs)

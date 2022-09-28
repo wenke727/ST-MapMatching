@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [v1.1.1] - 2022-05-09
+
+- 增加测试轨迹输入，存储路径为 `./input`
+- MapMathching
+  matching 增加仅有一个 candidate points 的边界条件
+- azimuth_diff
+  修复角度夹角大于 180 时计算错误的情况
+- point_to_polyline_process
+  返回值增加`点`到`折线`的`距离`
+
 ## [reconsitution] - 2022-05-09
 
 - 封装`DigraphOSM` 和 `ST_Matching`
