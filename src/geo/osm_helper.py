@@ -1,15 +1,21 @@
+#%%
 import os
+import sys
 import numpy as np
+from pathlib import Path
 import pandas as pd
-import geopandas as gpd
 from tqdm import tqdm
+import geopandas as gpd
 from haversine import haversine, Unit
 from shapely.geometry import Point, LineString
 
-from .coord.coordTransfrom_shp import coord_transfer 
+sys.path.append('../')
 from utils.interval_helper import merge_intervals
 from utils.timer import Timer
-from db.db_process import gdf_to_geojson
+from coordtransform import transform_gdf_coord_sys
+
+
+CACHE_FOLDER = Path("../../cache")
 
 
 def download_osm_xml(fn, bbox, verbose=False):
@@ -20,8 +26,13 @@ def download_osm_xml(fn, bbox, verbose=False):
         bbox ([type]): [description]
         verbose (bool, optional): [description]. Defaults to False.
     """
-    if os.path.exists(fn):
+    if type(fn) == str:
+        fn = Path(fn)
+        
+    if fn.exists():
         return True
+
+    fn.parent.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         print("Downloading {}".format(fn))
@@ -32,6 +43,8 @@ def download_osm_xml(fn, bbox, verbose=False):
     try:
         import requests
         url = f'http://overpass-api.de/api/map?bbox={bbox}'
+        
+        print(f"url: {url}")
         r = requests.get(url, stream=True)
         with open(fn, 'wb') as ofile:
             for chunk in r.iter_content(chunk_size=1024):
@@ -94,7 +107,7 @@ def parse_xml_to_topo(fn, road_info_fn, type_filter=[], keep_cols=None, crs=4326
         ).set_index('pid')
 
         if in_sys != out_sys:
-            df_nodes = coord_transfer(df_nodes, in_sys, out_sys)
+            df_nodes = transform_gdf_coord_sys(df_nodes, in_sys, out_sys)
             df_nodes.loc[:,['x']], df_nodes.loc[:,['y']] = df_nodes.geometry.x, df_nodes.geometry.y
 
         return df_nodes
@@ -204,7 +217,6 @@ def combine_links_parallel_helper(df_tuple, nodes, omit_pid_dict, verbose=False)
     if verbose: print(f"Part {i} Done, {timer.stop():.2f} s")
     
     return res
-
 
 if __name__ == "__main__":
     download_osm_xml('pcl', [113.934529 ,  22.5753099, 113.9369767,  22.5753355])

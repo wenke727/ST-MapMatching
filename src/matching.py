@@ -132,23 +132,24 @@ class ST_Matching(Trajectory):
         # No matched
         if cands is None:
             return None
+        
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
-            path = self.net.get_edge(eid)
-            return path
+            route = self.net.get_edge(eid)
+            return route
 
         cands, graph = self.spatial_anslysis(traj, cands, dir_trans=dir_trans)
         rList        = self.find_matched_sequence(cands, graph)
-        path, conns  = self.get_path(traj, rList, graph, cands)
+        route, conns  = self.get_path(traj, rList, graph, cands)
 
         if plot:
-            self.plot_matching(traj, cands, path, plot_scale=plot_scale)
+            self._plot_matching(traj, cands, route, plot_scale=plot_scale, satellite=False)
 
         if debug_in_levels:
             self.matching_debug(traj, graph, True)
         
-        return path
+        return route
 
     
     def get_candidates(self, traj:gpd.GeoDataFrame, radius:int=None, plot:bool=False, top_k:int=None):
@@ -474,7 +475,6 @@ class ST_Matching(Trajectory):
 
         # connector
         p_0, p_n = traj.iloc[0].geometry, traj.iloc[-1].geometry
-        print(traj)
         # BUG path 的 geometry 为空
         try:
             connector_0 = LineString([(p_0.x, p_0.y), path.loc[0, 'geometry'].coords[0]])
@@ -498,7 +498,7 @@ class ST_Matching(Trajectory):
         return path, connectors
     
     
-    def plot_matching(self, traj, cands, path, save_fn=None, satellite=True, column=None, categorical=True, plot_scale=.2):
+    def _plot_matching(self, traj, cands, route, save_fn=None, satellite=True, column=None, categorical=True, plot_scale=.2):
         def _base_plot():
             if column is not None and column in traj.columns:
                 ax = traj.plot(alpha=.3, column=column, categorical=categorical, legend=True)
@@ -511,7 +511,8 @@ class ST_Matching(Trajectory):
         # plot，trajectory point
         if satellite:
             try:
-                _, ax = map_visualize(traj, alpha=.3, scale=plot_scale, color='black')
+                from tilemap import plot_geodata
+                _, ax = plot_geodata(traj, alpha=.3, color='black', extra_imshow_args={'alpha':.5}, reset_extent=True)
                 if column is not None:
                     traj.plot(alpha=.3, column=column, categorical=categorical, legend=True, ax=ax)
             except:
@@ -527,10 +528,11 @@ class ST_Matching(Trajectory):
         # candidate
         self.net.get_edge(cands.eid.values).plot(
             ax=ax, label='Candidates', color='blue', linestyle='--', linewidth=.8, alpha=.5)
-        # path
-        if path is not None:
-            path.plot(ax=ax, label='Path', color='red', alpha=.5)
+        # route
+        if route is not None:
+            route.plot(ax=ax, label='Path', color='red', alpha=.5)
         
+        ax.axis('off')
         if column is None:
             plt.legend(loc='best')
         

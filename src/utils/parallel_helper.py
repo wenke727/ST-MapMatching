@@ -2,7 +2,7 @@ from tqdm import tqdm
 from multiprocessing import cpu_count, Pool
 
 
-def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing', n_jobs=-1, logger=None):
+def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing', total=None, n_jobs=-1):
     """parallel process helper
 
     Args:
@@ -14,6 +14,7 @@ def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing',
     Returns:
         [type]: [description]
     """
+    size = total
     if hasattr(queue, "__len__"):
         size = len(queue)
         if size == 0:
@@ -23,7 +24,7 @@ def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing',
     pool = Pool(n_jobs)
     
     if pbar_switch:
-        pbar = tqdm(size, desc=desc)
+        pbar = tqdm(total=size, desc=desc)
         update = lambda *args: pbar.update()
 
     res = []
@@ -37,13 +38,13 @@ def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing',
     return res
 
 
-def add_(x, y):
+def add_(x, y):    
     res = x + y 
-    print(f"{x} + {y} = {res}")
+    # print(f"{x} + {y} = {res}")
     
     return res
 
 
 if __name__ == "__main__":
-    parallel_process(add_, [(i, i) for i in range(100)])
+    parallel_process(add_, ((i, i) for i in range(10000)), True)
 

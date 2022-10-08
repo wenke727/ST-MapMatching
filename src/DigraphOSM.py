@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from haversine import haversine, Unit
 from shapely.geometry import LineString
 
-from geo.geo_plot_helper import map_visualize
 from geo.geo_helper import edge_parallel_offset
 from geo.osm_helper import download_osm_xml, parse_xml_to_topo, combine_links_parallel_helper
 
@@ -63,7 +62,10 @@ class DigraphOSM(DigraphAstar, Saver):
         assert download_osm_xml(xml_fn, bbox, True), "check `download_osm_xml`"
 
         # topo data
+        # TODO gcj, wgs
         self.df_nodes, self.df_edges = parse_xml_to_topo(xml_fn, road_info_fn, type_filter=self.road_type_filter, crs=self.crs_wgs)
+        if "traffic_signals" not in self.df_nodes.columns:
+            self.df_nodes.loc[:, 'traffic_signals'] = np.nan
         self.traffic_signals = self.df_nodes[~self.df_nodes.traffic_signals.isna()].index.unique()
         DigraphAstar.__init__(self, self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
         Saver.__init__(self, f"{CACHE_FOLDER}/{name}.pkl")
@@ -91,34 +93,29 @@ class DigraphOSM(DigraphAstar, Saver):
     def resume(self, fn):
         """ resume Digraph_OSM from the file """
         assert os.path.exists(fn), "Double check the file"
-        try:
-            Saver.__init__(self, fn)
-            self._load(fn)
-            self.logger = make_logger(LOG_FOLDER, "INFO")
-            self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
-            if not hasattr(self, "od_to_coords"):
-                self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
-            
-            print(f"load suceess, the pkl was created at {self.create_time}")
-            return True
-        except:
-            print('resume failed')
+
+        Saver.__init__(self, fn)
+        self._load(fn)
+        self.logger = make_logger(LOG_FOLDER, "INFO")
         
-        return False
+        if type(self.df_edges.iloc[0].geom_origin) == str:
+            self.df_edges.geom_origin = self.df_edges.geom_origin.apply(wkt.loads)
+        if not hasattr(self, "od_to_coords"):
+            self.od_to_coords = self.df_edges[['s', 'e', 'geom_origin']].set_index(['s', 'e']).geom_origin.apply(lambda x: x.coords[:]).to_dict()
+        
+        print(f"load suceess, the pkl was created at {self.create_time}")
+
+        return True
 
 
     def save(self):
         self._save()
 
 
-    def route_planning(self, o, d, plot=False, *args, **kwargs):
+    def route_planning(self, o, d, *args, **kwargs):
         route = self.a_star(o, d, *args, **kwargs)
         route['gdf'] = self.node_seq_to_df_edge(route['path'])
-        
-        if plot:
-            map_visualize(route['gdf'])
-            plt.show()
-        
+       
         return route
 
 
@@ -371,17 +368,24 @@ class DigraphOSM(DigraphAstar, Saver):
 #%%
 if __name__ == '__main__':
     # create new network
-    net = DigraphOSM("PCL", bbox=PCL_BBOX)
-    net.save()
+    # net = DigraphOSM("GBA", bbox=GBA_BBOX)
+    # net = DigraphOSM("PCL", bbox=PCL_BBOX)
+    # net = DigraphOSM("Shenzhen", bbox=SZ_BBOX)
+    # net = DigraphOSM("Futian", bbox=FT_BBOX)
+    # net.save()
 
     # Resume from pkl
-    net = DigraphOSM("Shenzhen", resume='../cache/Shenzhen.pkl')
+    # net = DigraphOSM("Shenzhen", resume='../cache/SZ.pkl')
+    net = DigraphOSM("Shenzhen", resume='E:\code\ST-MapMatching\cache\SZ.pkl')
 
     # route planning  
-    path = net.route_planning(o=7959990710, d=499265789, plot=True)
+    path = net.route_planning(o=7959990710, d=499265789)
 
+    from tilemap import plot_geodata
+    plot_geodata(path['gdf'])
+    
     # save data to db
-    net.to_postgis('shenzhen')
+    # net.to_postgis('shenzhen')
 
 
 # %%

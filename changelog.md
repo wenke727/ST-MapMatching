@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [V1.1.2] - 2022-10-08
+
+### Added
+
+- 增加基于瓦片编号规则的 `fishnet`
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+- DigraphOSM
+  - 考虑 节点数据 没有 `traffic_signals`情况
+- parallel_process
+  - 支持 tuple 作为 输入
+  - total 控制进度条的长度
+
+### Security
+
+
 ## [v1.1.1] - 2022-05-09
 
 - 增加测试轨迹输入，存储路径为 `./input`
