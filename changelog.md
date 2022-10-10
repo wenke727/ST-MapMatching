@@ -2,17 +2,33 @@
 
 ## [Unreleased]
 
+- 
+
+## [V1.1.3] - 2022-10-10
+
+### Added
+
+- 新增`osmnet` 模块
+
+  - combine_edges：将和 edge 合并相关的代码抽象合并在一起
+
+    为了提升最短路算法搜索的步长，将节点的入度和出度均为1的边和上下游合并
+
+    使用默认的 way 的方式会导致 graph 不齐全，`(o=7959990710, d=499265789)` :arrow_left: 拆分为最小单元，然后再次合并
+
+  - downloader：osm xml 下载模块
+
+  - parse_osm_xml
+
+    使用 pyosmium 模块解析 OSM 文件，加快提取 graph 的处理速度
+
+
+
 ## [V1.1.2] - 2022-10-08
 
 ### Added
 
 - 增加基于瓦片编号规则的 `fishnet`
-
-### Changed
-
-### Deprecated
-
-### Removed
 
 ### Fixed
 
@@ -21,8 +37,6 @@
 - parallel_process
   - 支持 tuple 作为 输入
   - total 控制进度条的长度
-
-### Security
 
 
 ## [v1.1.1] - 2022-05-09

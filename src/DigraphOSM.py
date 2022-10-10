@@ -6,7 +6,6 @@ import pandas as pd
 from shapely import wkt
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from haversine import haversine, Unit
 from shapely.geometry import LineString
 
 from geo.geo_helper import edge_parallel_offset
@@ -66,7 +65,7 @@ class DigraphOSM(DigraphAstar, Saver):
         self.df_nodes, self.df_edges = parse_xml_to_topo(xml_fn, road_info_fn, type_filter=self.road_type_filter, crs=self.crs_wgs)
         if "traffic_signals" not in self.df_nodes.columns:
             self.df_nodes.loc[:, 'traffic_signals'] = np.nan
-        self.traffic_signals = self.df_nodes[~self.df_nodes.traffic_signals.isna()].index.unique()
+        self.signal_control_points = self.df_nodes[~self.df_nodes.traffic_signals.isna()].index.unique()
         DigraphAstar.__init__(self, self.df_edges[['s', 'e', 'dist']].values, self.df_nodes.to_dict(orient='index'), *args, **kwargs)
         Saver.__init__(self, f"{CACHE_FOLDER}/{name}.pkl")
 
@@ -119,18 +118,12 @@ class DigraphOSM(DigraphAstar, Saver):
         return route
 
 
-    def cal_nodes_dis(self, o, d):
-        assert o in self.node and d in self.node, "Check the input o and d."
-        if (o, d) in self.node_pair_dis_memo:
-            return self.node_pair_dis_memo[(o, d)]
-        
-        return haversine((self.node[o]['y'], self.node[o]['x']), (self.node[d]['y'], self.node[d]['x']), unit=Unit.METERS)
-
-
     def to_postgis(self, name):
         try:
+            df_node_with_degree = self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
+            
             gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
-            gdf_to_postgis(self.df_node_with_degree, f'topo_osm_{name}_endpoint')
+            gdf_to_postgis(df_node_with_degree, f'topo_osm_{name}_endpoint')
             
             self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
             self.df_nodes = self.df_nodes[['nid', 'x', 'y', 'traffic_signals', 'geometry']]
@@ -171,12 +164,6 @@ class DigraphOSM(DigraphAstar, Saver):
         return False
 
 
-    @property
-    def df_node_with_degree(self,):
-        # Returns the point layer of topology data.
-        return self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
-
-
     """ aux func """
     def _add_reverse_edge(self, df_edges):
         """Add reverse edge.
@@ -207,7 +194,7 @@ class DigraphOSM(DigraphAstar, Saver):
             return flag
 
         df_edges.oneway = df_edges.oneway.fillna('no').apply(_juedge_oneway)
-        df_edges.loc[:, 'is_ring'] = df_edges.geometry.apply( lambda x: x.is_ring)
+        df_edges.loc[:, 'is_ring'] = df_edges.geometry.apply(lambda x: x.is_ring)
         df_edges.loc[:, 'dir'] = 1
 
         df_edge_rev = df_edges.query('oneway == False and not is_ring')
@@ -220,7 +207,7 @@ class DigraphOSM(DigraphAstar, Saver):
         return df_edges.append(df_edge_rev).reset_index(drop=True)
 
 
-    def _get_not_node_points(self):
+    def _get_aux_points_edge(self):
         """Identify the road segment with nodes of 1 indegree and 1 outdegree. 
 
         Returns:
@@ -230,7 +217,8 @@ class DigraphOSM(DigraphAstar, Saver):
     
 
     def _combine_rids(self):
-        omit_pids    = [x for x in self._get_not_node_points() if x not in self.traffic_signals]
+        # Refs: OSM2GMNS/osm2gmns/osmnet/combine_links.py::_combLinks
+        omit_pids    = [x for x in self._get_aux_points() if x not in self.signal_control_points]
         omit_records = self.df_edges.query( f"s in @omit_pids" )
         omit_rids    = omit_records.rid.unique().tolist()
         keep_records = self.df_edges.query( f"rid not in @omit_rids" )
@@ -248,14 +236,6 @@ class DigraphOSM(DigraphAstar, Saver):
         keep_records.loc[:, 'waypoints'] = keep_records.apply(lambda x: f"{x.s},{x.e}",axis=1)
         comb_rids = comb_rids.append(keep_records, sort=['rid', 'order'], ignore_index=True)[list(keep_records)]
         
-        # origin function 
-        # res = []
-        # for rid in tqdm(omit_rids, 'Combine links \t'):
-        #     res.append(self.combine_links_of_rid(rid, omit_records, self.df_edges))
-
-        # comb_rids = gpd.GeoDataFrame(pd.concat(res), crs=f"EPSG:{self.crs_wgs}")
-        # comb_rids = keep_records.append(comb_rids).reset_index(drop=True)
-
         return comb_rids
 
 
@@ -368,24 +348,14 @@ class DigraphOSM(DigraphAstar, Saver):
 #%%
 if __name__ == '__main__':
     # create new network
-    # net = DigraphOSM("GBA", bbox=GBA_BBOX)
-    # net = DigraphOSM("PCL", bbox=PCL_BBOX)
     # net = DigraphOSM("Shenzhen", bbox=SZ_BBOX)
-    # net = DigraphOSM("Futian", bbox=FT_BBOX)
     # net.save()
 
     # Resume from pkl
-    # net = DigraphOSM("Shenzhen", resume='../cache/SZ.pkl')
-    net = DigraphOSM("Shenzhen", resume='E:\code\ST-MapMatching\cache\SZ.pkl')
+    net = DigraphOSM("Shenzhen", resume='../input/ShenzhenNetwork.pkl')
 
     # route planning  
     path = net.route_planning(o=7959990710, d=499265789)
-
-    from tilemap import plot_geodata
-    plot_geodata(path['gdf'])
-    
-    # save data to db
-    # net.to_postgis('shenzhen')
-
+    path['gdf'].plot()
 
 # %%

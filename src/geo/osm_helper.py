@@ -133,7 +133,7 @@ def parse_xml_to_topo(fn, road_info_fn, type_filter=[], keep_cols=None, crs=4326
         edges.loc[:, ['s','e']] = pd.concat((edges.s.astype(np.int), edges.e.astype(np.int)), axis=1)
 
         edges = edges.merge( nodes[['x','y']], left_on='s', right_index=True ).rename(columns={'x':'x0', 'y':'y0'}) \
-                        .merge( nodes[['x','y']], left_on='e', right_index=True ).rename(columns={'x':'x1', 'y':'y1'})
+                     .merge( nodes[['x','y']], left_on='e', right_index=True ).rename(columns={'x':'x1', 'y':'y1'})
         edges = gpd.GeoDataFrame(
             edges, 
             geometry=edges.apply( lambda i: LineString( [[i.x0, i.y0], [i.x1, i.y1]] ), axis=1 ),
@@ -219,4 +219,5 @@ def combine_links_parallel_helper(df_tuple, nodes, omit_pid_dict, verbose=False)
     return res
 
 if __name__ == "__main__":
-    download_osm_xml('pcl', [113.934529 ,  22.5753099, 113.9369767,  22.5753355])
+    download_osm_xml('./pcl.osm.xml', [113.934529 ,  22.5753099, 113.9369767,  22.5753355])
+# %%

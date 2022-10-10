@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from collections import deque
+from haversine import haversine, Unit
+
 
 class Node:
     """
@@ -49,7 +51,7 @@ class Node:
 
 
 class Digraph:
-    def __init__(self, edges=None, nodes=None, *args, **kwargs):
+    def __init__(self, edges:list=None, nodes:dict=None, *args, **kwargs):
         """[summary]
 
         Args:
@@ -57,7 +59,7 @@ class Digraph:
             nodes (dict, optional): [description]. Defaults to None.
         """
         self.graph = {}
-        self.prev  = {}
+        self.graph_r = {}
         self.edge  = {}
         self.node  = {}
         
@@ -77,13 +79,13 @@ class Digraph:
 
     def add_edge(self, start, end, length=None):
         for p in [start, end]:
-            for g in [self.graph, self.prev]:
+            for g in [self.graph, self.graph_r]:
                 if p in g:
                     continue
                 g[p] = set()
             
         self.graph[start].add(end)
-        self.prev[end].add(start)
+        self.graph_r[end].add(start)
         if length is not None:
             self.edge[(start, end)] = length
             
@@ -95,9 +97,9 @@ class Digraph:
         if len(self.graph[start]) == 0:
             del self.graph[start]
         
-        self.prev[end].remove(start)
-        if len(self.prev[end]) == 0:
-            del self.prev[end]
+        self.graph_r[end].remove(start)
+        if len(self.graph_r[end]) == 0:
+            del self.graph_r[end]
         pass
 
 
@@ -117,7 +119,7 @@ class Digraph:
 
 
     def clean_empty_set(self):
-        for item in [self.prev, self.graph]:
+        for item in [self.graph_r, self.graph]:
             for i in list(item.keys()):
                 if len(item[i]) == 0:
                     del item[i]
@@ -127,8 +129,8 @@ class Digraph:
     def calculate_degree(self,):
         self.clean_empty_set()
         self.degree = pd.merge(
-            pd.DataFrame([[key, len(self.prev[key])]
-                          for key in self.prev], columns=['pid', 'indegree']),
+            pd.DataFrame([[key, len(self.graph_r[key])]
+                          for key in self.graph_r], columns=['pid', 'indegree']),
             pd.DataFrame([[key, len(self.graph[key])]
                           for key in self.graph], columns=['pid', 'outdegree']),
             how='outer',
@@ -143,14 +145,47 @@ class Digraph:
         return self.calculate_degree().reset_index().query( "indegree == 0 and outdegree != 0" ).pid.values
 
 
+    def cal_nodes_dist(self, src, dst):
+        return NotImplementedError
+
+    
+    def _simpify(self):
+        """
+        Simplify the graph, namely combine the edges with 1 indegree and 1 out degree
+        """
+        return NotImplementedError
+
+
+    def search(self, src, dst, *args, **kwargs):
+        return NotImplementedError
+    
+
+    def _get_aux_nodes(self, exclude_list=None):
+        if getattr(self, 'degree') is None:
+            self.calculate_degree()
+        
+        aux_nids = self.degree.query( "indegree == 1 and outdegree == 1" ).index.unique()
+        if exclude_list is not None:
+            aux_nids = [id for id in aux_nids if id not in exclude_list]
+
+        return aux_nids
+
+
 class DigraphAstar(Digraph):
     def __init__(self, edges=None, nodes=None, *args, **kwargs):
+        """_summary_
+
+        Args:
+            edges (_type_, optional): _description_. Defaults to None. Attrs: [src, dst, dist]
+            nodes (_type_, optional): _description_. Defaults to None. Attrs: [x, y]
+        """
         super().__init__(edges, nodes, *args, **kwargs)
         
         self.route_planning_memo = {}
+        self.node_pair_dis_memo = {}
 
 
-    def a_star(self, src, dst, max_query_size=2000, max_dist=10000, overwrite=False, plot=False, verbose=False):
+    def a_star(self, src, dst, max_steps=2000, max_dist=10000):
         """Route planning by A star algs
 
         Args:
@@ -163,7 +198,7 @@ class DigraphAstar(Digraph):
             dict: The route planning result with path, cost and status.
             status_dict = {-1: 'unreachable'}
         """
-        if not overwrite and (src, dst) in self.route_planning_memo:
+        if (src, dst) in self.route_planning_memo:
             res = self.route_planning_memo[(src, dst)]
             return res
         
@@ -174,15 +209,14 @@ class DigraphAstar(Digraph):
             
             return None
 
-        frontier = [(0, src)]
-        came_from, distance = {}, {}
-        came_from[src] = None
-        distance[src] = 0
+        queue = [(0, src)]
+        came_from = {src: None}
+        distance = {src: 0}
+        search_steps = 0
 
-        query_size = 0
-        while frontier:
-            _, cur = heapq.heappop(frontier)
-            if cur == dst or query_size > max_query_size:
+        while queue:
+            _, cur = heapq.heappop(queue)
+            if cur == dst or search_steps > max_steps:
                 break
             
             for nxt in self.graph[cur]:
@@ -195,10 +229,11 @@ class DigraphAstar(Digraph):
                     if distance[nxt] > max_dist:
                         continue
 
-                    heapq.heappush(frontier, (new_cost + self.cal_nodes_dis(dst, nxt), nxt) )
+                    heapq.heappush(queue, (new_cost + self.cal_nodes_dist(dst, nxt), nxt) )
                     came_from[nxt] = cur
-            query_size += 1
+            search_steps += 1
 
+        # abnormal situation
         if cur != dst:
             res = {'path': None, 'cost': np.inf, "status": -1} 
             self.route_planning_memo[(src, dst)] = res
@@ -208,7 +243,6 @@ class DigraphAstar(Digraph):
         route, queue = [dst], deque([dst])
         while queue:
             node = queue.popleft()
-            # assert node in came_from, f"({origin}, {dest}), way to {node}"
             if came_from[node] is None:
                 continue
             route.append(came_from[node])
@@ -218,9 +252,17 @@ class DigraphAstar(Digraph):
         res = {'path':route, 'cost': distance[dst], 'status':1}
         self.route_planning_memo[(src, dst)] = res
 
-        if plot:
-            path_lst = gpd.GeoDataFrame([ { 's': route[i], 'e': route[i+1]} for i in range(len(route)-1) ])
-            ax = path_lst.merge(self.df_edges, on=['s', 'e']).plot()
-                    
         return res
+
+
+    def cal_nodes_dist(self, src, dst):
+        assert src in self.node and dst in self.node, "Check the input o and d."
+        if (src, dst) in self.node_pair_dis_memo:
+            return self.node_pair_dis_memo[(src, dst)]
+        
+        return haversine(
+            (self.node[src]['y'], self.node[src]['x']), 
+            (self.node[dst]['y'], self.node[dst]['x']), 
+            unit=Unit.METERS
+        )
 

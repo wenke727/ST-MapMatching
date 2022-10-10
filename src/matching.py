@@ -98,8 +98,8 @@ class ST_Matching(Trajectory):
     def __init__(self, 
                  net:DigraphOSM, 
                  dp_thres=5, 
-                 route_planning_max_query_size=2000, 
-                 route_planning_max_dist=10000,
+                 max_search_steps=2000, 
+                 max_search_dist=10000,
                  top_k_candidates=5,
                  cand_search_radius=50,
                  crs_wgs=4326, 
@@ -118,8 +118,8 @@ class ST_Matching(Trajectory):
         # hyper parameters
         self.top_k_candidates = top_k_candidates
         self.cand_search_radius = cand_search_radius
-        self.route_planning_max_query_size = route_planning_max_query_size
-        self.route_planning_max_dist = route_planning_max_dist
+        self.route_planning_max_search_steps = max_search_steps
+        self.route_planning_max_search_dist = max_search_dist
 
 
     def load_points(self, fn, compress=True, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
@@ -323,8 +323,8 @@ class ST_Matching(Trajectory):
                                           **self.net.a_star(
                                               o, 
                                               d, 
-                                              max_query_size=self.route_planning_max_query_size,
-                                              max_dist=self.route_planning_max_dist) 
+                                              max_steps=self.route_planning_max_search_steps,
+                                              max_dist=self.route_planning_max_search_dist) 
                                           } for o, d in ods ]
                                        )
 
