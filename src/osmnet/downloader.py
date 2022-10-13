@@ -44,3 +44,6 @@ def download_osm_xml(fn, bbox, verbose=False):
         return True
     except:
         return False
+
+if __name__ == "__main__":
+    download_osm_xml('../../cache/Futian.osm.xml', [114.03814, 22.51675, 114.06963, 22.56533])

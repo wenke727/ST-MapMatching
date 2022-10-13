@@ -2,7 +2,23 @@
 
 ## [Unreleased]
 
-- 
+- 重构 原DigraphOSM 模块，并进行测试
+
+## [V1.1.4] - 2022-10-13
+
+### Changed
+
+- 将原来 DigraphOSM 分为 `OSM 预处理的部分` 和 `图论算法部分`
+  - 其中图论部分抽象为 `GeoDigraph`
+  - OSM预处理模块按照模块拆分至 `osmnet `模块
+- `graph`模块：将图论相关模块抽象
+  - `base.py`: Node, Digraph
+  - `geograph.py`: 原来 DigraphOSM 图论通用模块下沉至本模块 
+  - `bfs`：A* 算法
+- `osmnet`模块
+  - osm_io: 数据加载模块
+  - parse_osm_xml: 修改 edge 和 node 提取的属性
+  - twoway_edge: 针对识别双向道路，并进行一定程度的偏移
 
 ## [V1.1.3] - 2022-10-10
 

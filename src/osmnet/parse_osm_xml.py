@@ -10,9 +10,13 @@ from shapely.geometry import Point
 warnings.filterwarnings('ignore')
 
 import sys
-sys.path.append('../')
+sys.path.append('..')
+sys.path.append('./src')
 from utils.timer import Timer
-from misc import Bunch, cal_od_straight_distance
+from shapely.geometry import LineString
+from osmnet.osm_io import load_graph, save_graph
+from osmnet.twoway_edge import add_reverse_edge
+from osmnet.misc import Bunch, cal_od_straight_distance
 from osmnet.combine_edges import pipeline_combine_links
 
 
@@ -53,7 +57,13 @@ class WayHandler(osmium.SimpleHandler):
         # edges
         nds = way.ref_node_id_list
         for i in range(len(way.ref_node_id_list)-1):
-            self.edges.append({'way_id': way['osm_way_id'], 'order': i, 'src':nds[i], 'dst':nds[i+1]})        
+            item = {'way_id': way['osm_way_id'], 
+                    'order': i, 
+                    'src':nds[i], 
+                    'dst':nds[i+1],
+                    'waypoints': f"{nds[i]},{nds[i+1]}"
+            }
+            self.edges.append(item)
 
 
     def _extract_one_way_info(self, w, way):
@@ -61,58 +71,60 @@ class WayHandler(osmium.SimpleHandler):
         way['oneway'] = None
         if oneway_info is not None:
             if oneway_info == 'yes' or oneway_info == '1':
-                way.oneway = True
+                way['oneway'] = True
             elif oneway_info == 'no' or oneway_info == '0':
-                way.oneway = False
+                way['oneway'] = False
             elif oneway_info == '-1':
-                way.oneway = True
+                way['oneway'] = True
                 way.is_reversed = True
             elif oneway_info in ['reversible', 'alternating']:
                 # todo: reversible, alternating: https://wiki.openstreetmap.org/wiki/Tag:oneway%3Dreversible
-                way.oneway = False
+                way['oneway'] = False
             else:
                 logger.warning(f'new lane type detected at way {way.osm_way_id}, {oneway_info}')   
         else:
-            way.oneway = True
+            way['oneway'] = True
+        
+        return way
 
 
     def _extract_lane_info(self, w, way):
         lane_info = w.tags.get('lanes')
-        way['lane_info'] = None
         if lane_info is not None:
             lanes = re.findall(r'\d+\.?\d*', lane_info)
             if len(lanes) > 0:
-                way.lanes = int(float(lanes[0]))  # in case of decimals
+                way['lanes'] = int(float(lanes[0]))  # in case of decimals
             else:
-                logger.warning(f'new lanes type detected at way {way.osm_way_id}, {lane_info}')
+                logger.warning(f"new lanes type detected at way {way['osm_way_id']}, {lane_info}")
         lane_info = w.tags.get('lanes:forward')
         if lane_info is not None:
             try:
-                way.forward_lanes = int(lane_info)
+                way['forward_lanes'] = int(lane_info)
             except:
                 pass
         lane_info = w.tags.get('lanes:backward')
         if lane_info is not None:
             try:
-                way.backward_lanes = int(lane_info)
+                way['backward_lanes'] = int(lane_info)
             except:
                 pass        
 
+        return way
     
     def _extract_maxspeed_info(self, w, way):
         maxspeed_info = w.tags.get('maxspeed')
         way['maxspeed'] = None
         if maxspeed_info is not None:
             try:
-                way.maxspeed = int(float(maxspeed_info))
+                way['maxspeed'] = int(float(maxspeed_info))
             except ValueError:
                 speeds = re.findall(r'\d+\.?\d* mph', maxspeed_info)
                 if len(speeds) > 0:
-                    way.maxspeed = int(float(speeds[0][:-4]) * 1.6)
+                    way['maxspeed'] = int(float(speeds[0][:-4]) * 1.6)
                 else:
                     speeds = re.findall(r'\d+\.?\d* km/h', maxspeed_info)
                     if len(speeds) > 0:
-                        way.maxspeed = int(float(speeds[0][:-5]))
+                        way['maxspeed'] = int(float(speeds[0][:-5]))
                     else:
                         logger.warning(f'new maxspeed type detected at way {way.osm_way_id}, {maxspeed_info}')                            
 
@@ -143,18 +155,24 @@ class NodeHandler(osmium.SimpleHandler):
                 'ctrl_type': ctrl_type, 
                 "x": lon,
                 "y": lat,
+                "xy": (lon, lat),
                 'geometry': node_geometry
         }
         
         self.nodes[osm_node_id] = item
 
 
-def parse_xml_to_graph(fn, highway_filters=None, simplify=True, n_jobs=8):
+def parse_xml_to_graph(fn, highway_filters=None, simplify=True, twoway=True, offset=True, crs="epsg:4326", in_sys='wgs', out_sys='wgs', n_jobs=16):
+    # TODO wgs, gcj
     # ways
     timer = Timer()
     way_handler = WayHandler(highway_filters)
     way_handler.apply_file(fn)
     print(f"Parse ways: {timer.stop():.2f} s")
+    df_ways = pd.DataFrame.from_dict(way_handler.osm_way_dict, orient='index')
+    df_ways.loc[:, 'src'] = df_ways.ref_node_id_list.apply(lambda x: x[0])
+    df_ways.loc[:, 'dst'] = df_ways.ref_node_id_list.apply(lambda x: x[-1])
+    assert df_ways.oneway.nunique() >= 2, "check oneways"
     
     # nodes
     timer.start()
@@ -166,13 +184,8 @@ def parse_xml_to_graph(fn, highway_filters=None, simplify=True, n_jobs=8):
     timer.start()
     df_nodes = gpd.GeoDataFrame.from_dict(node_handler.nodes, orient='index')
     df_nodes.set_crs('epsg:4326', inplace=True)
-
-    df_edges = pd.DataFrame(way_handler.edges)
+    df_edges = gpd.GeoDataFrame(way_handler.edges, crs=crs)
     df_edges.loc[:, 'dist'] = cal_od_straight_distance(df_edges, df_nodes)
-
-    df_ways = pd.DataFrame.from_dict(way_handler.osm_way_dict, orient='index')
-    df_ways.loc[:, 'src'] = df_ways.ref_node_id_list.apply(lambda x: x[0])
-    df_ways.loc[:, 'dst'] = df_ways.ref_node_id_list.apply(lambda x: x[-1])
     print(f"Transform to Dataframe: {timer.stop():.2f} s, node len: {df_nodes.shape[0]}")
 
     # combine edges
@@ -181,28 +194,53 @@ def parse_xml_to_graph(fn, highway_filters=None, simplify=True, n_jobs=8):
         signal_control_points = df_nodes[~df_nodes.ctrl_type.isna()].index.unique()
         df_edges = pipeline_combine_links(df_edges, signal_control_points, n_jobs)
         print(f"Simplify the graph, {(1- df_edges.shape[0] / ori_size) * 100:.2f} % off")
-      
+    
+    # Transform coords seq to geometry
+    timer.start()
+    df_edges.loc[:, 'waypoints'] = df_edges.apply(
+        lambda x: [int(i) for i in x.waypoints.split(',')], axis=1)
+    df_edges.loc[:,'geometry'] = df_edges.loc[:, 'waypoints'].apply(
+        lambda x: LineString([df_nodes.loc[i].geometry.coords[0] for i in x]))
+    print(f"Transform coords seq to geometry: {timer.stop():.2f} s")
+    
+    # TODO bidirectional ways
+    if twoway:
+        timer.start()
+        df_edges = add_reverse_edge(df_edges, df_ways, offset=offset)
+        print(f"Process twoway edges: {timer.stop():.2f} s")
+    
+    df_edges.set_crs(crs, inplace=True)
+    df_nodes.set_crs(crs, inplace=True)
+
     return df_nodes, df_edges, df_ways
 
 
 #%%
 if __name__ == "__main__":
     # fn = "/home/pcl/factory/ST-MapMatching/cache/GBA.osm.xml"
-    fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
+    # fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
+    fn = "/home/pcl/factory/ST-MapMatching/cache/Futian.osm.xml"
     
     df_nodes, df_edges, df_ways = parse_xml_to_graph(fn)
             
     timer = Timer()
     # 测试最短路算法
     timer.start()
-    from utils.DataStructure.digraph import DigraphAstar
-    digraph = DigraphAstar(df_edges[['src', 'dst', 'dist']].values, df_nodes.to_dict(orient='index'))
+    from graph.geograph import GeoDigraph
+    digraph = GeoDigraph(df_edges, df_nodes)
 
-    path = digraph.a_star(src=7959990710, dst=499265789)
+    timer.start()
+    path = digraph.search(src=7959990710, dst=499265789)
     df_nodes.loc[path['path']].plot()
 
     print(path['path'])
     print(f"Map mathcing: {timer.stop():.2f} s")
+
+
+# %%
+    # ! _add_reverse_edge
+    from tilemap import plot_geodata
+    plot_geodata(_df_edges.query('way_id == 160131332'), reset_extent=False)
 
 
 # %%

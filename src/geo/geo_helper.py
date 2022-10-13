@@ -287,63 +287,6 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
 
 
 """ Linstring helper """
-def edge_parallel_offset(record:pd.Series, distance=1.25/110/1000, process_two_point=True, keep_endpoint_pos=True, logger=None):
-    """Returns a LineString or MultiLineString geometry at a distance from the object on its right or its left side
-
-    Args:
-        record (LineString): The record object should have the `geometry` attitude.
-        distance (float, optional): [description]. Defaults to 2/110/1000.
-        keep_endpoint_pos (bool, optional): keep hte endpoints position or not. Defaults to False.
-        logger(logbook.Logger): Logger.
-
-    Returns:
-        [LineString]: The offset LineString.
-    """
-    if 'geometry' not in record:
-        return None
-    geom = record.geometry
-    
-    if len(geom.coords) <= 1:
-        if logger is not None:
-            logger.warning(f"{geom}: the length of it is less than 1.")
-        return geom
-    
-    if geom.is_ring:
-        return geom
-
-    def _cal_dxdy(p0, p1, scale = 15):
-        return ((p1[0]-p0[0])/scale, (p1[1]-p0[1])/scale)
-
-    def _point_offset(p, dxdy, add=True):
-        if add:
-            return (p[0]+dxdy[0], p[1]+dxdy[1])
-
-        return (p[0]-dxdy[0], p[1]-dxdy[1])
-    
-    try:
-        offset_coords = geom.parallel_offset(distance, side='right').coords[::-1]
-
-        ori_s, ori_e = geom.coords[0], geom.coords[-1]
-        dxdy_s = _cal_dxdy(*geom.coords[:2])
-        dxdy_e = _cal_dxdy(*geom.coords[-2:])
-        turing_s =  _point_offset(offset_coords[0], dxdy_s, add=True )
-        turing_e =  _point_offset(offset_coords[-1], dxdy_e, add=False )
-        
-        coords = [ori_s] + [turing_s] + offset_coords[1:-1] + [turing_e] + [ori_e]
-        coords = np.round(coords, 7)
-        geom_new = LineString(coords)
-        
-        if logger is not None:
-            logger.info(f"{len(geom.coords)},{len(geom_new.coords)}\n{geom}\n{geom_new}")
-        
-        return geom_new
-    except:
-        if logger is not None:
-            logger.error(f"{record.name}, geom: {geom}, offset error")    
-
-    return geom
-        
-
 def linestring_length(df:gpd.GeoDataFrame, add_to_att=False, key='length'):
     """caculate the length of LineString
     @return: pd:Series, length
