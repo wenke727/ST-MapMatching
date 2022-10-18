@@ -18,9 +18,7 @@ from osmnet.osm_io import load_graph, save_graph
 from osmnet.twoway_edge import add_reverse_edge
 from osmnet.misc import Bunch, cal_od_straight_distance
 from osmnet.combine_edges import pipeline_combine_links
-
-
-highway_filters = {'cycleway','footway','pedestrian','steps','track','corridor','elevator','escalator','service','living_street'}
+from setting import highway_filters
 
 
 class WayHandler(osmium.SimpleHandler):
@@ -110,6 +108,7 @@ class WayHandler(osmium.SimpleHandler):
                 pass        
 
         return way
+
     
     def _extract_maxspeed_info(self, w, way):
         maxspeed_info = w.tags.get('maxspeed')
@@ -149,7 +148,6 @@ class NodeHandler(osmium.SimpleHandler):
         osm_highway = n.tags.get('highway')
         ctrl_type = 'signal' if (osm_highway is not None) and 'signal' in osm_highway else None
 
-        # node = OSMNode(osm_node_name, osm_node_id, node_geometry, in_region, osm_highway, ctrl_type)
         item = {'name': osm_node_name, 
                 'highway': osm_highway, 
                 'ctrl_type': ctrl_type, 
@@ -162,8 +160,9 @@ class NodeHandler(osmium.SimpleHandler):
         self.nodes[osm_node_id] = item
 
 
-def parse_xml_to_graph(fn, highway_filters=None, simplify=True, twoway=True, offset=True, crs="epsg:4326", in_sys='wgs', out_sys='wgs', n_jobs=16):
+def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twoway=True, offset=True, crs="epsg:4326", in_sys='wgs', out_sys='wgs', n_jobs=16):
     # TODO wgs, gcj
+    
     # ways
     timer = Timer()
     way_handler = WayHandler(highway_filters)
@@ -209,8 +208,10 @@ def parse_xml_to_graph(fn, highway_filters=None, simplify=True, twoway=True, off
         df_edges = add_reverse_edge(df_edges, df_ways, offset=offset)
         print(f"Process twoway edges: {timer.stop():.2f} s")
     
-    df_edges.set_crs(crs, inplace=True)
     df_nodes.set_crs(crs, inplace=True)
+    df_edges.set_crs(crs, inplace=True)
+    if 'eid' not in df_edges:
+        df_edges = df_edges.reset_index().rename(columns={'index': 'eid'})
 
     return df_nodes, df_edges, df_ways
 
@@ -219,12 +220,11 @@ def parse_xml_to_graph(fn, highway_filters=None, simplify=True, twoway=True, off
 if __name__ == "__main__":
     # fn = "/home/pcl/factory/ST-MapMatching/cache/GBA.osm.xml"
     # fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
-    fn = "/home/pcl/factory/ST-MapMatching/cache/Futian.osm.xml"
-    
+    timer = Timer()
+    fn = "../../cache/Futian.osm.xml"
     df_nodes, df_edges, df_ways = parse_xml_to_graph(fn)
             
-    timer = Timer()
-    # 测试最短路算法
+    """ 测试最短路算法 """
     timer.start()
     from graph.geograph import GeoDigraph
     digraph = GeoDigraph(df_edges, df_nodes)
@@ -237,10 +237,9 @@ if __name__ == "__main__":
     print(f"Map mathcing: {timer.stop():.2f} s")
 
 
-# %%
-    # ! _add_reverse_edge
+    """ _add_reverse_edge """
     from tilemap import plot_geodata
-    plot_geodata(_df_edges.query('way_id == 160131332'), reset_extent=False)
+    plot_geodata(df_edges.query('way_id == 160131332'), reset_extent=False)
 
 
 # %%

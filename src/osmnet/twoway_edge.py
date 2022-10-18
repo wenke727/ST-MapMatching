@@ -3,6 +3,7 @@ import pandas as pd
 from loguru import logger
 from shapely.geometry import LineString
 
+
 def add_reverse_edge(df_edges, df_ways, od_attrs=['src', 'dst'], offset=True):
     """Add reverse edge.
 
@@ -42,7 +43,7 @@ def _edge_offset(df_edges):
     
     _df_edges.loc[:, 'geom_origin'] = _df_edges.geometry.copy()
     # df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
-    geom_offset = _df_edges.apply( lambda x: edge_parallel_offset(x, logger=logger), axis=1 )
+    geom_offset = _df_edges.apply( lambda x: edge_parallel_offset(x), axis=1 )
     _df_edges.loc[geom_offset.index, 'geometry'] = geom_offset
 
     return df_edges.query("way_id not in @way_ids").append(_df_edges)
@@ -55,7 +56,6 @@ def edge_parallel_offset(record:pd.Series, distance=1.25/110/1000, process_two_p
         record (LineString): The record object should have the `geometry` attitude.
         distance (float, optional): [description]. Defaults to 2/110/1000.
         keep_endpoint_pos (bool, optional): keep hte endpoints position or not. Defaults to False.
-        logger(logbook.Logger): Logger.
 
     Returns:
         [LineString]: The offset LineString.

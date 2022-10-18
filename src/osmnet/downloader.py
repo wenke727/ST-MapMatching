@@ -46,4 +46,10 @@ def download_osm_xml(fn, bbox, verbose=False):
         return False
 
 if __name__ == "__main__":
+    import sys
+    sys.path.append('..')
+    from setting import GBA_BBOX, SZ_BBOX
+
     download_osm_xml('../../cache/Futian.osm.xml', [114.03814, 22.51675, 114.06963, 22.56533])
+    download_osm_xml('../../cache/Shenzhen.osm.xml', SZ_BBOX)
+    download_osm_xml('../../cache/GBA.osm.xml', GBA_BBOX)

@@ -11,29 +11,30 @@ sys.path.append('./src')
 from graph.base import Digraph
 from graph.bfs import a_star
 from osmnet.osm_io import load_graph
+from utils.serialization import save_checkpoint, load_checkpoint
 
 #%%
 class GeoDigraph(Digraph):
-    def __init__(self, df_edges:GeoDataFrame, df_nodes:GeoDataFrame, *args, **kwargs):
+    def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
         self.df_edges = df_edges
         self.df_nodes = df_nodes
         self.search_memo = {}
         self.nodes_dist_memo = {}
         
-        super().__init__(df_edges[['src', 'dst', 'dist']].values, df_nodes.to_dict(orient='index'), *args, **kwargs)
+        if df_edges is not None and df_nodes is not None:
+            super().__init__(df_edges[['src', 'dst', 'dist']].values, df_nodes.to_dict(orient='index'), *args, **kwargs)
         
 
-    def search(self, src, dst, *args, **kwargs):
+    def search(self, src, dst, max_steps=2000, max_dist=10000):
         route = a_star(graph=self.graph,
                        nodes=self.nodes,
                        src=src,
                        dst=dst,
                        search_memo=self.search_memo,
                        nodes_dist_memo=self.nodes_dist_memo,
-                       max_steps=2000,
-                       max_dist=10000
+                       max_steps=max_steps,
+                       max_dist=max_dist
         )
-        route['gdf'] = self.transform_node_seq_to_df_edge(route['path'])
        
         return route
 
@@ -168,17 +169,22 @@ class GeoDigraph(Digraph):
         return True
 
 
+    def save_checkpoint(self, ckpt):
+        return save_checkpoint(self, ckpt)
+
+
+    def load_checkpoint(self, ckpt):
+        return load_checkpoint(ckpt, self)
+    
+
 if __name__ == "__main__":
-    df_nodes, df_edges, df_ways = load_graph('/home/pcl/factory/ST-MapMatching/cache/Shenzhen_graph.pkl')
-    network = GeoDigraph(df_edges, df_nodes)
+    network = GeoDigraph()
+    network.load_checkpoint(ckpt='/home/pcl/codes/ST-MapMatching/cache/Shenzhen_graph.ckpt')
 
     path = network.search(src=7959990710, dst=499265789)
     from tilemap import plot_geodata
-    plot_geodata(df_nodes.loc[path['path']])
+    plot_geodata(network.df_nodes.loc[path['path']])
 
     # TODO od 间的 geometry
     network.transform_node_seq_to_df_edge(path['path'])
 
-    # network.transform_node_seq_to_polyline(path['path'])
-
-# %%

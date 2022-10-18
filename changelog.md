@@ -4,6 +4,28 @@
 
 - 重构 原DigraphOSM 模块，并进行测试
 
+## [V1.1.4] - 2022-10-18
+
+### Added
+
+- `GeoDigraph` 增加 对象序列化功能
+
+  - save_checkpoint
+  - load_checkpoint
+
+- `osmnet` 模块
+
+  - 新增 `build_graph` 模块，通过 osm 文件快速获得 路网的图信息
+
+- `utils` 中 `serialization` 子模块
+
+  新增 `save_checkpoint`， `load_checkpoint` 
+
+### Changed
+
+- `matching` 适配新路网格式，主要是边 的起点 `(s, e)` -> `(src, dst)`
+
+
 ## [V1.1.4] - 2022-10-13
 
 ### Changed

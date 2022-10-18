@@ -5,12 +5,12 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from shapely.geometry import Point, LineString, box
+from shapely.geometry import LineString, box
 
-from DigraphOSM import DigraphOSM
+# from DigraphOSM import DigraphOSM
 from utils.logger_helper import make_logger
-from utils.timer import Timer
 
+from graph import GeoDigraph
 from geo.geo_plot_helper import map_visualize
 from geo.coord.coordTransfrom_shp import coord_transfer
 from geo.douglasPeucker import dp_compress_for_points as dp_compress
@@ -19,7 +19,9 @@ from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAng
 
 from setting import DEBUG_FOLDER, DIS_FACTOR
 
+from osmnet.build_graph import build_geograph
 
+pd.set_option('display.width', 5000)        # 打印结果不换行方法
 #%%
 
 class Trajectory:
@@ -96,7 +98,7 @@ class Trajectory:
 
 class ST_Matching(Trajectory):
     def __init__(self, 
-                 net:DigraphOSM, 
+                 net:GeoDigraph, 
                  dp_thres=5, 
                  max_search_steps=2000, 
                  max_search_dist=10000,
@@ -107,7 +109,7 @@ class ST_Matching(Trajectory):
                  ):
         self.crs_wgs        = crs_wgs
         self.crs_prj        = crs_prj
-        self.logger         = make_logger('../log', console=True)
+        self.logger         = make_logger('../log', console=False, level="INFO")
         self.traj_processor = Trajectory(dp_thres, crs_wgs, crs_prj, self.logger)
         self.net            = net
         self.dis_factor     = DIS_FACTOR
@@ -174,10 +176,10 @@ class ST_Matching(Trajectory):
             df = df_candidates.copy()
             origin_size = df.shape[0]
 
-            # group by ['pid', 'rid', 'dir'] to filter the edges which belong to the same road.
+            # group by ['pid', 'way_id', 'dir'] to filter the edges which belong to the same road.
             df_new = df.merge(self.net.df_edges, right_index=True, left_on='eid')\
                        .sort_values(['pid', 'dist_p2c'], ascending=[True, True])\
-                       .groupby(['pid', 'rid', 'dir'])\
+                       .groupby(['pid', 'way_id', 'dir'])\
                        .head(1)
             df_new = df_new.groupby('pid').head(top_k).reset_index(drop=True)
             self.logger.info(f"Top k candidate link, size: {origin_size} -> {df_new.shape[0]}")
@@ -210,7 +212,7 @@ class ST_Matching(Trajectory):
             self.net.get_edge(cands_.eid.values).plot(ax=ax, color='red')
             traj.plot(ax=ax)
         
-        keep_cols = ['pid', 'eid', 'rid', 's', 'e', 'dir' ,'dist_p2c', 'observ_prob']
+        keep_cols = ['pid', 'eid', 'way_id', 'src', 'dst', 'dir' ,'dist_p2c', 'observ_prob']
         keep_cols = [ i for i in keep_cols if i in cands_ ]
         
         return cands_[keep_cols]
@@ -251,14 +253,14 @@ class ST_Matching(Trajectory):
         graph = []
         tList = [layer for _, layer in cands.groupby('pid')]
 
-        base_atts = ['pid', 'eid','s', 'e', 'len_0', 'len_1', 'seg_0', 'seg_1']
+        base_atts = ['pid', 'eid','src', 'dst', 'len_0', 'len_1', 'seg_0', 'seg_1']
         cols_filter = [
             'pid_0',
             'pid_1',
             'eid_0',
             'eid_1',
-            'e_0',
-            's_1',
+            'dst_0',
+            'src_1',
             'seg_0_1',
             'seg_1_0',
             'observ_prob',
@@ -316,11 +318,11 @@ class ST_Matching(Trajectory):
     
     def _trans_prob(self, graph):
         same_link_mask = graph.eid_0 == graph.eid_1
-        ods = graph[~same_link_mask][['e_0', 's_1']].drop_duplicates().values
+        ods = graph[~same_link_mask][['dst_0', 'src_1']].drop_duplicates().values
         if len(ods) > 0:
-            df_planning = pd.DataFrame([ {'e_0':o, 
-                                          's_1':d, 
-                                          **self.net.a_star(
+            df_planning = pd.DataFrame([ {'dst_0':o, 
+                                          'src_1':d, 
+                                          **self.net.search(
                                               o, 
                                               d, 
                                               max_steps=self.route_planning_max_search_steps,
@@ -328,14 +330,14 @@ class ST_Matching(Trajectory):
                                           } for o, d in ods ]
                                        )
 
-            graph = graph.merge(df_planning, on=['e_0', 's_1'], how='left')
+            graph = graph.merge(df_planning, on=['dst_0', 'src_1'], how='left')
             # `w` is the shortest path from `ci-1` to `ci`
             graph.loc[:, 'w'] = graph.cost + graph.offset_0 + graph.offset_1 
             # transmission probability
             graph.loc[:, 'v'] = graph.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
 
         graph.loc[same_link_mask, 'path'] = graph.loc[same_link_mask, 'eid_0'].apply(
-            lambda x: self.net.get_edge(x, att=['s', 'e']).values.tolist())
+            lambda x: self.net.get_edge(x, att=['src', 'dst']).values.tolist())
         graph.loc[same_link_mask, 'v'] = 1
         
         return graph
@@ -372,7 +374,7 @@ class ST_Matching(Trajectory):
             lambda x: 
                 point_to_polyline_process(
                     traj_points.loc[x.pid].geometry, 
-                    self.net.get_edge(x.eid, 'geom_origin'), 
+                    self.net.get_edge(x.eid, 'geometry'), 
                     coord_sys=True
                 ), 
             axis=1, 
@@ -415,7 +417,7 @@ class ST_Matching(Trajectory):
             rList.append(c)
             c = prev_dict[c]
         rList.append(c)
-        rList = cands.loc[rList[::-1]][['pid', 'eid', 's', 'e']]
+        rList = cands.loc[rList[::-1]][['pid', 'eid', 'src', 'dst']]
 
         self.logger.info(f'max score: {c}, f_score: {f_score}\n{rList}')
         
@@ -434,7 +436,7 @@ class ST_Matching(Trajectory):
             [type]: [description]
         """
         if rList.shape[0] == 1:
-            return self.net.merge_edge(rList, on=['s', 'e']), None
+            return self.net.merge_edge(rList, on=['src', 'dst']), None
         
         def _helper(x):
             res = graph.loc[x.pid].loc[x.eid].loc[x.nxt_eid].path
@@ -445,7 +447,7 @@ class ST_Matching(Trajectory):
         # Drop `Consecutive identical line segments`, and keep the first one record
         steps = steps[steps != steps.shift(1)]
 
-        od_lst = [rList.iloc[0].s]
+        od_lst = [rList.iloc[0]['src']]
         for step in steps.values:
             if step is None or isinstance(step, np.float):
                 continue
@@ -454,8 +456,8 @@ class ST_Matching(Trajectory):
                 od_lst += step[1:]
             else:    
                 od_lst += step
-        od_lst += [rList.iloc[-1].e]
-        path = self.net.node_seq_to_df_edge(od_lst)
+        od_lst += [rList.iloc[-1]['dst']]
+        path = self.net.transform_node_seq_to_df_edge(od_lst)
         
         # update geometry of the first/last step 
         step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
@@ -654,7 +656,7 @@ class ST_Matching(Trajectory):
         if 'geometry' in list(graph) and not overwrite:
             return graph
 
-        graph.loc[:, 'geometry'] = graph.path.apply(self.net.node_seq_to_polyline)
+        graph.loc[:, 'geometry'] = graph.path.apply(self.net.transform_node_seq_to_polyline)
 
         return graph
 
@@ -663,7 +665,7 @@ def cos_similarity(self, path_, v_cal=30):
     # TODO cos similarity for speed
     # path_ = [5434742616, 7346193109, 7346193114, 5434742611, 7346193115, 5434742612, 7346193183, 7346193182]
     seg = [[path_[i-1], path_[i]] for i in range(1, len(path_))]
-    v_roads = pd.DataFrame(seg, columns=['s', 'e']).merge(self.edges,  on=['s', 'e']).v.values
+    v_roads = pd.DataFrame(seg, columns=['src', 'dst']).merge(self.edges,  on=['src', 'dst']).v.values
     
     num = np.sum(v_roads.T * v_cal)
     denom = np.linalg.norm(v_roads) * np.linalg.norm([v_cal for x in v_roads])
@@ -674,57 +676,58 @@ def cos_similarity(self, path_, v_cal=30):
 
 #%%
 if __name__ == "__main__":
-    NET = DigraphOSM("Shenzhen", resume='../input/Shenzhen.pkl')
-    # path = net.route_planning(o=7959990710, d=499265789, plot=True)
+    from pathlib import Path
+    base_folder = Path("../test/data")
+    net = GeoDigraph("Shenzhen", resume='../input/Shenzhen.pkl')
+    net = build_geograph(ckpt='../cache/Shenzhen_graph.ckpt')
 
-    self = ST_Matching(net=NET)
-
+    matcher = ST_Matching(net=net)
+    # 测试：压缩算法
+    traj = matcher.load_points(base_folder / "traj_debug_199.geojson")
+    path = matcher.matching(traj, plot=True)
+    
     # github演示数据
-    traj = self.load_points("../input/traj_0.geojson")
-    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    traj = matcher.load_points("../input/traj_0.geojson")
+    path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
     
     # 真实车辆移动轨迹
-    traj = self.load_points("../input/traj_1.geojson")
-    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-    
-    # 测试：压缩算法
-    traj = self.load_points("../input/test/traj_debug_199.geojson")
-    path = self.matching(traj, plot=True)
+    traj = matcher.load_points("../input/traj_1.geojson")
+    path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
 
     # 测试：起点和终点同个路段
-    traj = self.load_points("../input/test/traj_debug_200.geojson")
-    path = self.matching(traj, plot=True)
+    traj = matcher.load_points(base_folder / "traj_debug_200.geojson")
+    path = matcher.matching(traj, plot=True)
 
     # 测试，仅两个点，中兴公寓 
-    traj = self.load_points("../input/test/traj_debug_7.geojson")
-    path = self.matching(traj, plot=True, top_k=3, dir_trans=False, plot_scale=5)
+    traj = matcher.load_points(base_folder / "traj_debug_7.geojson")
+    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=False, plot_scale=5)
 
     # 测试, 打石一路车道右转专用道拐弯
-    traj = self.load_points("../input/test/traj_debug_20.geojson")
-    path = self.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=5)
+    traj = matcher.load_points(base_folder / "traj_debug_20.geojson")
+    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=5)
 
     # 测试, 打石一路反向车道测试
-    traj = self.load_points("../input/test/traj_debug_141.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=5)  
+    traj = matcher.load_points(base_folder / "traj_debug_141.geojson")
+    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=5)  
   
     # 测试, 深南大道
-    traj = self.load_points("../input/test/traj_debug_case1.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
+    traj = matcher.load_points(base_folder / "traj_debug_case1.geojson")
+    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
     
     # 测试, 小支路测试
-    traj = self.load_points("../input/test/traj_debug_case2.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
+    traj = matcher.load_points(base_folder / "traj_debug_case2.geojson")
+    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
     # 测试, 深南大道市民中心段测试
-    traj = self.load_points("../input/test/traj_debug_rid.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
+    traj = matcher.load_points(base_folder / "traj_debug_rid.geojson")
+    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
     # 测试，打石一路
-    traj = self.load_points("../input/test/traj_debug_dashiyilu_0.geojson")
-    path = self.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
+    traj = matcher.load_points(base_folder / "traj_debug_dashiyilu_0.geojson")
+    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
 
     # 测试，本身畸形的数据
-    traj = self.load_points("../input/test/traj_debug.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
+    traj = matcher.load_points(base_folder / "traj_debug.geojson")
+    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
 
 

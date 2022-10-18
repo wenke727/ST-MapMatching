@@ -44,3 +44,5 @@ filters['walk'] = {'area':['yes'],
                    'service':['private'],
                    'access':['private']
                    }
+
+highway_filters = filters['auto']['highway']
