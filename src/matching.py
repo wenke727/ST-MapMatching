@@ -20,8 +20,10 @@ from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAng
 from setting import DEBUG_FOLDER, DIS_FACTOR
 
 from osmnet.build_graph import build_geograph
+from match.neigborEdges import get_k_neigbor_edges
 
 pd.set_option('display.width', 5000)        # 打印结果不换行方法
+
 #%%
 
 class Trajectory:
@@ -129,7 +131,19 @@ class ST_Matching(Trajectory):
 
 
     def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False):
-        cands = self.get_candidates(traj, self.cand_search_radius, top_k=top_k, plot=False)
+        # cands_ = self.get_candidates(traj, self.cand_search_radius, top_k=top_k, plot=False)
+        cands = get_k_neigbor_edges(points=traj, 
+                               edges=self.net.df_edges, 
+                               top_k=top_k, 
+                               radius=self.cand_search_radius,
+                               edge_keys=['way_id', 'dir'], 
+                               edge_attrs=['src', 'dst', 'way_id', 'dir', 'geometry'],
+                               pid='pid',
+                               eid='eid',
+                               ll=True,
+                               crs_wgs=self.crs_wgs,
+                               crs_prj=self.crs_prj
+                )
         
         # No matched
         if cands is None:
@@ -673,61 +687,16 @@ def cos_similarity(self, path_, v_cal=30):
     
     return cos
 
-
+ 
 #%%
 if __name__ == "__main__":
-    from pathlib import Path
-    base_folder = Path("../test/data")
-    net = GeoDigraph("Shenzhen", resume='../input/Shenzhen.pkl')
     net = build_geograph(ckpt='../cache/Shenzhen_graph.ckpt')
-
     matcher = ST_Matching(net=net)
-    # 测试：压缩算法
-    traj = matcher.load_points(base_folder / "traj_debug_199.geojson")
-    path = matcher.matching(traj, plot=True)
-    
     # github演示数据
     traj = matcher.load_points("../input/traj_0.geojson")
     path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-    
+
     # 真实车辆移动轨迹
     traj = matcher.load_points("../input/traj_1.geojson")
     path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-
-    # 测试：起点和终点同个路段
-    traj = matcher.load_points(base_folder / "traj_debug_200.geojson")
-    path = matcher.matching(traj, plot=True)
-
-    # 测试，仅两个点，中兴公寓 
-    traj = matcher.load_points(base_folder / "traj_debug_7.geojson")
-    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=False, plot_scale=5)
-
-    # 测试, 打石一路车道右转专用道拐弯
-    traj = matcher.load_points(base_folder / "traj_debug_20.geojson")
-    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=5)
-
-    # 测试, 打石一路反向车道测试
-    traj = matcher.load_points(base_folder / "traj_debug_141.geojson")
-    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=5)  
-  
-    # 测试, 深南大道
-    traj = matcher.load_points(base_folder / "traj_debug_case1.geojson")
-    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
-    
-    # 测试, 小支路测试
-    traj = matcher.load_points(base_folder / "traj_debug_case2.geojson")
-    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
-
-    # 测试, 深南大道市民中心段测试
-    traj = matcher.load_points(base_folder / "traj_debug_rid.geojson")
-    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
-
-    # 测试，打石一路
-    traj = matcher.load_points(base_folder / "traj_debug_dashiyilu_0.geojson")
-    path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
-
-    # 测试，本身畸形的数据
-    traj = matcher.load_points(base_folder / "traj_debug.geojson")
-    path = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, plot_scale=.1)
-
 

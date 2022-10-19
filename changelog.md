@@ -4,6 +4,17 @@
 
 - 重构 原DigraphOSM 模块，并进行测试
 
+## [V1.1.5] - 2022-10-19
+
+### Changed
+
+- 将 `get_k_neigbor_edges`(即原 get_candidates) 从 ST_Matching 中抽象出来
+  - 针对一般场景，耗时在 `十毫秒` 级别
+  - sindex.query(bbox, predicate='intersects'), 经过测试，`feature` 在 `bbox` 内部/相交 都是支持的，详见 `./test/0_shapely_空间关系.ipynb`
+
+- `ST_Matching` 适配 `get_k_neigbor_candidates` 算法
+
+
 ## [V1.1.4] - 2022-10-18
 
 ### Added
