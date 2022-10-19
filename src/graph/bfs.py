@@ -68,7 +68,7 @@ def a_star(graph:dict,
             f"{', origin not in graph' if src not in graph else ', '}",
             f"{', dest not in graph' if dst not in graph else ''}")
         
-        return None
+        return {"status": 1} 
 
     queue = [(0, src)]
     came_from = {src: None}
@@ -97,13 +97,13 @@ def a_star(graph:dict,
 
     # abnormal situation
     if cur != dst:
-        res = {'path': None, 'cost': np.inf, "status": -1} 
+        res = {'path': None, 'cost': np.inf, "status": 2} 
         search_memo[(src, dst)] = res
         return res
 
     # reconstruct path
     path = _reconstruct_path(dst, came_from)
-    res = {'path':path, 'cost': distance[dst], 'status': 1}
+    res = {'path':path, 'cost': distance[dst], 'status': 0}
     search_memo[(src, dst)] = res
 
     return res

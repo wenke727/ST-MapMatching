@@ -20,7 +20,8 @@ from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAng
 from setting import DEBUG_FOLDER, DIS_FACTOR
 
 from osmnet.build_graph import build_geograph
-from match.neigborEdges import get_k_neigbor_edges
+from match.geometricAnalysis import get_k_neigbor_edges
+from match.spatialAnalysis import analyse_spatial_info
 
 pd.set_option('display.width', 5000)        # 打印结果不换行方法
 
@@ -131,10 +132,9 @@ class ST_Matching(Trajectory):
 
 
     def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False):
-        # cands_ = self.get_candidates(traj, self.cand_search_radius, top_k=top_k, plot=False)
         cands = get_k_neigbor_edges(points=traj, 
                                edges=self.net.df_edges, 
-                               top_k=top_k, 
+                               top_k=top_k if top_k is not None else self.top_k_candidates, 
                                radius=self.cand_search_radius,
                                edge_keys=['way_id', 'dir'], 
                                edge_attrs=['src', 'dst', 'way_id', 'dir', 'geometry'],
@@ -155,7 +155,7 @@ class ST_Matching(Trajectory):
             route = self.net.get_edge(eid)
             return route
 
-        cands, graph = self.spatial_anslysis(traj, cands, dir_trans=dir_trans)
+        cands, graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
         rList        = self.find_matched_sequence(cands, graph)
         route, conns  = self.get_path(traj, rList, graph, cands)
 
@@ -167,92 +167,7 @@ class ST_Matching(Trajectory):
         
         return route
 
-    
-    def get_candidates(self, traj:gpd.GeoDataFrame, radius:int=None, plot:bool=False, top_k:int=None):
-        """Get candidates points and its localed edge for traj, which are line segment projection of p_i to these road segs.
-        This step can be efficiently perfermed with the build-in grid-based spatial index.
 
-        Args:
-            traj (gpd.GeoDataFrame): _description_
-            radius (int, optional): _description_. Defaults to 25.
-            plot (bool, optional): _description_. Defaults to True.
-            top_k (int, optional): _description_. Defaults to None.
-
-        Returns:
-            (gpd.GeoDataFrame): a set of candidate points and the candidate road segments they lie on.
-        Example:
-            traj:
-                            id	geometry
-                0	None	POINT (114.04219 22.53083)
-                1	None	POINT (114.04809 22.53141)
-        """
-        def _filter_candidate(df_candidates, top_k):
-            df = df_candidates.copy()
-            origin_size = df.shape[0]
-
-            # group by ['pid', 'way_id', 'dir'] to filter the edges which belong to the same road.
-            df_new = df.merge(self.net.df_edges, right_index=True, left_on='eid')\
-                       .sort_values(['pid', 'dist_p2c'], ascending=[True, True])\
-                       .groupby(['pid', 'way_id', 'dir'])\
-                       .head(1)
-            df_new = df_new.groupby('pid').head(top_k).reset_index(drop=True)
-            self.logger.info(f"Top k candidate link, size: {origin_size} -> {df_new.shape[0]}")
-
-            return df_new
-
-        top_k   = self.top_k_candidates if top_k is None else top_k
-        radius  = (self.cand_search_radius if radius is None else radius) * self.dis_factor
-        boxes   = traj.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
-        df_cand = boxes.apply(lambda x: self.net.spatial_query(x)).explode().dropna()
-        if df_cand.shape[0] == 0:
-            return None
-        
-        df_cand = pd.DataFrame(df_cand).reset_index()\
-                                       .rename(columns={'index': 'pid', 'geometry':'eid'})\
-                                       .merge(traj['geometry'], left_on='pid', right_index=True)\
-                                       .merge(self.net.df_edges['geometry'], left_on='eid', right_index=True)\
-                                       .rename(columns={'geometry_x': 'point_geom', 'geometry_y': 'edge_geom'})\
-                                       .sort_index()
-        # df_cand.loc[:, 'dist_p2c'] = df_cand.apply(lambda x: x.point_geom.distance(x.edge_geom) / DIS_FACTOR, axis=1)
-        df_cand.loc[:, 'dist_p2c'] = geom_series_distance(df_cand.point_geom, df_cand.edge_geom, self.crs_wgs, self.crs_prj)
-        cands_ = _filter_candidate(df_cand, top_k)
-        
-        if cands_ is None:
-            self.logger.warning(f"Trajectory has no matching candidates")
-            return None
-        
-        if plot:
-            ax = self.net.get_edge(df_cand.eid.values).plot()
-            self.net.get_edge(cands_.eid.values).plot(ax=ax, color='red')
-            traj.plot(ax=ax)
-        
-        keep_cols = ['pid', 'eid', 'way_id', 'src', 'dst', 'dir' ,'dist_p2c', 'observ_prob']
-        keep_cols = [ i for i in keep_cols if i in cands_ ]
-        
-        return cands_[keep_cols]
-
-
-    def spatial_anslysis(self, traj, cands, dir_trans=False):
-        """Geometric and topological info, the product of `observation prob` and the `transmission prob`
-        
-        Special Case:
-            a. same_link_same_point
-        """
-        cands = self._line_segment_projection(traj, cands)
-        _     = self._observ_prob(cands)
-        graph = self._construct_graph(traj, cands)        
-        graph = self._trans_prob(graph)
-        if dir_trans:
-            graph = self._move_dir_similarity(graph, traj)
-        # spatial analysis: observ_prob * trans_prob
-        graph.loc[:, 'f'] = graph.observ_prob * graph.v * (graph.f_dir if dir_trans else 1)
-
-        atts = ['pid_0', 'eid_0', 'eid_1']
-        graph = graph.drop_duplicates(atts).set_index(atts).sort_index()
-
-        return cands, graph
-    
-    
     def temporal_anylysis(self,):
         # take the similar speed conditions into account
         # the cosine distance is used to measure the similarity between the actual average speed from `ci-1` to `ci`
@@ -261,143 +176,6 @@ class ST_Matching(Trajectory):
         return NotImplementedError
     
     
-    def _construct_graph(self, traj, cands):
-        """Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
-        """
-        graph = []
-        tList = [layer for _, layer in cands.groupby('pid')]
-
-        base_atts = ['pid', 'eid','src', 'dst', 'len_0', 'len_1', 'seg_0', 'seg_1']
-        cols_filter = [
-            'pid_0',
-            'pid_1',
-            'eid_0',
-            'eid_1',
-            'dst_0',
-            'src_1',
-            'seg_0_1',
-            'seg_1_0',
-            'observ_prob',
-            'len_0_1',
-            'len_1_0',
-        ]
-        rename_dict = {
-            'seg_0_1': 'step_first',
-            'seg_1_0': 'step_last',
-            'len_0_1': 'offset_0',
-            'len_1_0': 'offset_1',
-            'cost': 'd_sht',
-        }
-        
-        # Cartesian product
-        for i in range(len(tList)-1):
-            a, b = tList[i][base_atts], tList[i+1][base_atts+['observ_prob']]
-            a.loc[:, 'tmp'], b.loc[:, 'tmp'] = 1, 1 
-            graph.append(a.merge(b, on='tmp', suffixes=["_0", '_1']).drop(columns='tmp') )
-        graph = pd.concat(graph).reset_index(drop=True)
-        
-        graph = graph[[i for i in cols_filter if i in graph.columns]]
-        graph.rename(columns=rename_dict, inplace=True)
-        graph.loc[:, 'd_euc'] = graph.apply(
-            lambda x: coords_pair_dist(traj.loc[x.pid_0].geometry, traj.loc[x.pid_1].geometry), axis=1)
-
-        return graph
-
-
-    def _observ_prob(self, df, bias=0, deviation=20, normal=True):
-        """The obervation prob is defined as the likelihood that a GPS sampling point `p_i` mathes a candidate point `C_ij`
-        computed based on the distance between the two points. 
-
-        Args:
-            df (gpd.GeoDataFrame): GPS points dataframe.
-            bias (float, optional): GPS measurement error bias. Defaults to 0.
-            deviation (float, optional): GPS measurement error deviation. Defaults to 20.
-            normal (bool, optional): Min-Max Scaling. Defaults to False.
-
-        Returns:
-            _type_: _description_
-        """
-
-        observ_prob_factor = 1 / (np.sqrt( 2 * np.pi) * deviation)
-        cal_helper = lambda x: observ_prob_factor * np.exp(-np.power(x - bias, 2)/(2 * np.power(deviation, 2)))
-        df.loc[:, 'observ_prob'] = df.dist_p2c.apply(cal_helper)
-        if normal:
-            df.loc[:, 'observ_prob'] = df.observ_prob / df.observ_prob.max()
-        
-        observ_prob_dict = df.set_index(['pid', 'eid'])['observ_prob'].to_dict()
-        self.logger.info(f"candidates:\n{df}")
-        
-        return observ_prob_dict
-    
-    
-    def _trans_prob(self, graph):
-        same_link_mask = graph.eid_0 == graph.eid_1
-        ods = graph[~same_link_mask][['dst_0', 'src_1']].drop_duplicates().values
-        if len(ods) > 0:
-            df_planning = pd.DataFrame([ {'dst_0':o, 
-                                          'src_1':d, 
-                                          **self.net.search(
-                                              o, 
-                                              d, 
-                                              max_steps=self.route_planning_max_search_steps,
-                                              max_dist=self.route_planning_max_search_dist) 
-                                          } for o, d in ods ]
-                                       )
-
-            graph = graph.merge(df_planning, on=['dst_0', 'src_1'], how='left')
-            # `w` is the shortest path from `ci-1` to `ci`
-            graph.loc[:, 'w'] = graph.cost + graph.offset_0 + graph.offset_1 
-            # transmission probability
-            graph.loc[:, 'v'] = graph.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
-
-        graph.loc[same_link_mask, 'path'] = graph.loc[same_link_mask, 'eid_0'].apply(
-            lambda x: self.net.get_edge(x, att=['src', 'dst']).values.tolist())
-        graph.loc[same_link_mask, 'v'] = 1
-        
-        return graph
-
-
-    def _move_dir_similarity(self, graph, traj):
-        self.__graph_path_2_polyline(graph)
-        
-        graph.loc[:, 'move_dir'] = graph.apply(
-            lambda x: 
-                azimuthAngle(*traj.iloc[x.pid_0].geometry.coords[0], 
-                             *traj.iloc[x.pid_1].geometry.coords[0]),
-            axis=1
-        )
-        
-        graph.loc[:, 'f_dir'] = graph.apply(
-            lambda x: 
-                (azimuth_cos_similarity_for_linestring(x.geometry, x.move_dir, weight=True) + 1) / 2
-                    if x.geometry is not None else 1, 
-            axis=1
-        )
-
-        # FIXME Manually change the `f_dir` weights of the starting and ending on the same line segment
-        # same_link_mask = graph.eid_0 == graph.eid_1
-        # graph.loc[same_link_mask, 'f_dir'] = 1
-        
-        return graph
-        
-
-    def _line_segment_projection(self, traj_points, cands, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
-        # TODO: Reduce unnecessary caculations
-        # `len` was an required attribute in graph, while `seg` only use in the first/final step
-        cands[keep_cols] = cands.apply(
-            lambda x: 
-                point_to_polyline_process(
-                    traj_points.loc[x.pid].geometry, 
-                    self.net.get_edge(x.eid, 'geometry'), 
-                    coord_sys=True
-                ), 
-            axis=1, 
-            result_type='expand'
-        )[keep_cols]
-        
-        return cands
-        
-
     def find_matched_sequence(self, cands:gpd.GeoDataFrame, graph:gpd.GeoDataFrame):
         prev_dict, f_score = {}, {}
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values

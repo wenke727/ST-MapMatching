@@ -1,4 +1,5 @@
 #%%
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 from loguru import logger
@@ -6,7 +7,7 @@ from shapely.geometry import box
 
 import sys
 sys.path.append('../')
-from geo.geo_helper import geom_series_distance
+from geo.geo_helper import geom_series_distance, point_to_polyline_process
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -138,6 +139,47 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
     # keep_cols = [ i for i in keep_cols if i in cands_ ]
     
     return _df_cands
+
+
+def project_point_to_line_segment(net, traj_points, cands, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
+    # `len` was an required attribute in graph, while `seg` only use in the first/final step
+    res = cands.apply(
+        lambda x: 
+            point_to_polyline_process(
+                traj_points.loc[x.pid].geometry, 
+                net.get_edge(x.eid, 'geometry'), 
+                coord_sys=True
+            ), 
+        axis=1, 
+        result_type='expand'
+    )[keep_cols]
+    
+    cands[keep_cols] = res
+    
+    return cands
+
+
+def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
+    """The obervation prob is defined as the likelihood that a GPS sampling point `p_i` mathes a candidate point `C_ij`
+    computed based on the distance between the two points. 
+
+    Args:
+        df (gpd.GeoDataFrame): Distance series or arrays.
+        bias (float, optional): GPS measurement error bias. Defaults to 0.
+        deviation (float, optional): GPS measurement error deviation. Defaults to 20.
+        normal (bool, optional): Min-Max Scaling. Defaults to False.
+
+    Returns:
+        _type_: _description_
+    """
+    observ_prob_factor = 1 / (np.sqrt( 2 * np.pi) * deviation)
+    _dist = observ_prob_factor * np.exp(-np.power(dist - bias, 2)/(2 * np.power(deviation, 2)))
+
+    if normal:
+        _dist /= _dist.max()
+    
+    return _dist
+
 
 
 if __name__ == "__main__":

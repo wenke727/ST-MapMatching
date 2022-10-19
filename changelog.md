@@ -4,6 +4,13 @@
 
 - 重构 原DigraphOSM 模块，并进行测试
 
+## [V1.1.6] - 2022-10-19
+
+### Changed
+
+- 将 `spatial_analysis`相关部分从 ST_Matching 中抽离
+
+
 ## [V1.1.5] - 2022-10-19
 
 ### Changed

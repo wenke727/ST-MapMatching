@@ -16,6 +16,7 @@ log
 # Distribution / packaging
 .vscode/
 test/
+tmp/
 api/
 rsrc
 .Python
