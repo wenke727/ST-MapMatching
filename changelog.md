@@ -2,7 +2,33 @@
 
 ## [Unreleased]
 
-- 重构 原DigraphOSM 模块，并进行测试
+- [ ] 聚光搜索, 流程梳理
+- [ ] 后处理的流程加速，`transform_node_seq_to_polyline`
+
+## [V1.1.7] - 2022-10-24
+
+### Added
+
+- `db_process` 增加 PostgreSQL 支持
+
+### Changed
+
+- `ST-MapMatching` 重构，将各个模块的功能进行拆分
+
+  ```log
+  ├── __int__.py
+  ├── candidatesGraph.py
+  ├── geometricAnalysis.py
+  ├── postprocess.py
+  ├── spatialAnalysis.py
+  ├── temporalAnalysis.py
+  ├── topologicalAnalysis.py
+  ├── visualization.py
+  └── viterbi.py
+  ```
+
+- astar 的 memo 经测试，耗时可以降低 2 个数量级
+- 统一 `parse_osm_xml`的 df_edges `eid` 和 `index`值 
 
 ## [V1.1.6] - 2022-10-19
 

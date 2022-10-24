@@ -26,7 +26,7 @@ def _plot_candidates(points, edges, match_res):
     return 
 
 
-def _filter_candidate(df_candidates:gpd.GeoDataFrame, top_k:int=5, pid:str='pid', edge_keys:list=['way_id', 'dir'], level='info'):
+def _filter_candidate(df_candidates: gpd.GeoDataFrame, top_k: int = 5, pid: str = 'pid', edge_keys: list = ['way_id', 'dir'], level='info'):
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
 
     Args:
@@ -44,9 +44,10 @@ def _filter_candidate(df_candidates:gpd.GeoDataFrame, top_k:int=5, pid:str='pid'
     df = df.sort_values([pid, 'dist_p2c'], ascending=[True, True])
     if edge_keys:
         df = df.groupby([pid] + edge_keys).head(1)
-        
+
     df = df.groupby(pid).head(top_k).reset_index(drop=True)
-    getattr(logger, level)(f"Top k candidate link, size: {origin_size} -> {df.shape[0]}")
+    getattr(logger, level)(
+        f"Top k candidate link, size: {origin_size} -> {df.shape[0]}")
 
     return df
 
@@ -61,6 +62,7 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
                    eid:str='eid', 
                    predicate:str='intersects', 
                    ll:bool=True, 
+                   ll_to_utm_dis_factor = 1e-5,
                    crs_wgs:int=4326, 
                    crs_prj:int=900913):
     """Get candidates points and its localed edge for traj, which are line segment projection of p_i to these road segs.
@@ -100,7 +102,6 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
         _type_: _description_
     """
     # assert edge_attrs
-    ll_to_utm_dis_factor = 1e-5
     if ll:
         radius *= ll_to_utm_dis_factor
 
@@ -135,28 +136,20 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
         logger.warning(f"Trajectory has no matching candidates")
         return None
     
-    # keep_cols = [pid, eid, 'way_id', 'src', 'dst', 'dir' ,'dist_p2c', 'observ_prob']
-    # keep_cols = [ i for i in keep_cols if i in cands_ ]
-    
     return _df_cands
 
 
-def project_point_to_line_segment(net, traj_points, cands, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
+def project_point_to_line_segment(df_edges, traj_points, cands, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
     # `len` was an required attribute in graph, while `seg` only use in the first/final step
-    res = cands.apply(
-        lambda x: 
-            point_to_polyline_process(
-                traj_points.loc[x.pid].geometry, 
-                net.get_edge(x.eid, 'geometry'), 
-                coord_sys=True
-            ), 
-        axis=1, 
-        result_type='expand'
-    )[keep_cols]
-    
+    def f(x): return point_to_polyline_process(
+        traj_points.loc[x.pid].geometry,
+        df_edges.loc[x.eid].geometry,
+        coord_sys=True
+    )
+    res = cands.apply(f, axis=1, result_type='expand')[keep_cols]
     cands[keep_cols] = res
-    
-    return cands
+
+    return res
 
 
 def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
@@ -172,15 +165,41 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
     Returns:
         _type_: _description_
     """
-    observ_prob_factor = 1 / (np.sqrt( 2 * np.pi) * deviation)
-    _dist = observ_prob_factor * np.exp(-np.power(dist - bias, 2)/(2 * np.power(deviation, 2)))
+    observ_prob_factor = 1 / (np.sqrt(2 * np.pi) * deviation)
 
+    def f(x): return observ_prob_factor * \
+        np.exp(-np.power(x - bias, 2)/(2 * np.power(deviation, 2)))
+
+    _dist = f(dist)
     if normal:
         _dist /= _dist.max()
-    
+
     return _dist
 
 
+def analyse_geometric_info(
+                   points:gpd.GeoDataFrame, 
+                   edges:gpd.GeoDataFrame, 
+                   top_k:int=5, 
+                   radius:float=50, 
+                   edge_keys:list=['way_id', 'dir'], 
+                   edge_attrs:list=['src', 'dst', 'way_id', 'dir', 'geometry'], 
+                   pid:str='pid', 
+                   eid:str='eid', 
+                   predicate:str='intersects', 
+                   ll:bool=True, 
+                   ll_to_utm_dis_factor = 1e-5,
+                   crs_wgs:int=4326, 
+                   crs_prj:int=900913):
+    cands = get_k_neigbor_edges(points, edges, top_k, radius, edge_keys,
+                                edge_attrs, pid, eid, predicate, ll, 
+                                ll_to_utm_dis_factor, crs_wgs, crs_prj)
+    
+    project_point_to_line_segment(edges, points, cands)
+    cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+    
+    return cands
+    
 
 if __name__ == "__main__":
     from shapely.geometry import Point, LineString
@@ -189,7 +208,7 @@ if __name__ == "__main__":
     lines = [LineString([[0, i], [10, i]]) for i in range(0, 10)]
     lines += [LineString(([5.2,5.2], [5.8, 5.8]))]
     edges = gpd.GeoDataFrame({'geometry': lines, 
-                                 'way_id':[i for i in range(10)] + [5]})
+                              'way_id':[i for i in range(10)] + [5]})
     # points
     a, b = Point(1, 1.1), Point(5, 5.1) 
     points = gpd.GeoDataFrame({'geometry': [a, b]}, index=[1, 3])

@@ -211,7 +211,9 @@ def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twowa
     df_nodes.set_crs(crs, inplace=True)
     df_edges.set_crs(crs, inplace=True)
     if 'eid' not in df_edges:
-        df_edges = df_edges.reset_index().rename(columns={'index': 'eid'})
+        df_edges.reset_index(inplace=True, drop=True)
+        df_edges.loc[:, 'eid'] = df_edges.index
+    assert (df_edges.eid == df_edges.index).sum() / df_edges.shape[0] == 1, "Check eid"
 
     return df_nodes, df_edges, df_ways
 
@@ -221,7 +223,7 @@ if __name__ == "__main__":
     # fn = "/home/pcl/factory/ST-MapMatching/cache/GBA.osm.xml"
     # fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
     timer = Timer()
-    fn = "../../cache/Futian.osm.xml"
+    fn = "../cache/Futian.osm.xml"
     df_nodes, df_edges, df_ways = parse_xml_to_graph(fn)
             
     """ 测试最短路算法 """
