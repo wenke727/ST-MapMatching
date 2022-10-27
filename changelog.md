@@ -7,6 +7,19 @@
 
 ## [V1.1.7] - 2022-10-24
 
+### Changed
+
+- `project_point_to_line_segment`接口修改，输入为`points, edges, keep_cols`
+- `postprocess`轨迹还原处理模块重构
+- `parse_xml_to_graph`增加 index 和 eid 顺序一致性的判断
+
+### Fixed
+
+- `sindex.query`查询问题修正，index 的值为 item 在数据框中的序号，而非其真正索引的 `index`
+- 
+
+## [V1.1.7] - 2022-10-24
+
 ### Added
 
 - `db_process` 增加 PostgreSQL 支持

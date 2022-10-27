@@ -11,13 +11,12 @@ from geo.coord.coordTransfrom_shp import coord_transfer
 from geo.douglasPeucker import dp_compress_for_points as dp_compress
 from setting import DEBUG_FOLDER, DIS_FACTOR
 
-from db.db_process import gdf_to_geojson
+from match.postprocess import get_path
 from osmnet.build_graph import build_geograph
+from match.viterbi import process_viterbi_pipeline
 from match.spatialAnalysis import analyse_spatial_info
 from match.geometricAnalysis import analyse_geometric_info
-from match.viterbi import find_matched_sequence, process_viterbi_pipeline
 from match.visualization import matching_debug_level, plot_matching
-from match.postprocess import get_path
 
 pd.set_option('display.width', 5000)        # 打印结果不换行方法
 from utils.logger_helper import make_logger
@@ -132,6 +131,7 @@ class ST_Matching(Trajectory):
 
 
     def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False):
+        timer = Timer()
         cands = analyse_geometric_info(points=traj, 
                                edges=self.net.df_edges, 
                                top_k=top_k if top_k is not None else self.top_k_candidates, 
@@ -159,7 +159,9 @@ class ST_Matching(Trajectory):
         # rList_ = find_matched_sequence(cands, graph[['pid_1', 'f']])
         rList  = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
         
+        timer.start()
         route, conns = get_path(self.net, traj, rList, graph, cands)
+        print(f"Get path: {timer.stop():.4f} s")
         
         if plot:
             plot_matching(self.net, traj, cands, route, plot_scale=plot_scale, satellite=False)
@@ -205,19 +207,28 @@ class ST_Matching(Trajectory):
 
 #%%
 if __name__ == "__main__":
-    net = build_geograph(ckpt='../cache/Shenzhen_graph.ckpt')
-    matcher = ST_Matching(net=net)
+    # FIXME 12的版本不对, 可能是因为因为 geometry 数据不同导致的
+    # net = build_geograph(ckpt='../cache/Shenzhen_graph_12.0.ckpt')
+    net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
+    self = ST_Matching(net=net)
+
+    # # github演示数据
+    # 真实车辆轨迹
+    traj = self.load_points("../input/traj_1.geojson")
+    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
 
     # github演示数据
-    traj = matcher.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
-    path = matcher.matching(traj, plot=False, dir_trans=True, debug_in_levels=False)
-
+    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
+    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    
     # github演示数据
-    traj = matcher.load_points("../input/traj_0.geojson")
-    path = matcher.matching(traj, plot=False, dir_trans=True, debug_in_levels=False)
+    traj = self.load_points("../input/traj_0.geojson")
+    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
 
-    traj = matcher.load_points("../input/traj_0.geojson")
-    path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+
+#%%
+    # traj = matcher.load_points("../input/traj_0.geojson")
+    # path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
  
     # from db.db_process import gdf_to_postgis
     # net.df_edges.loc[:, 'eid'] = net.df_edges.index
@@ -228,3 +239,4 @@ if __name__ == "__main__":
     # 真实车辆移动轨迹
     # traj = matcher.load_points("../input/traj_1.geojson")
     # path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+

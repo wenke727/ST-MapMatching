@@ -44,7 +44,9 @@ class GeoDigraph(Digraph):
     def spatial_query(self, geofence, name='df_edges', predicate='intersects'):
         gdf = getattr(self, name)
         
-        return gdf.sindex.query(geofence, predicate=predicate)
+        idxs = gdf.sindex.query(geofence, predicate=predicate)
+        
+        return gdf.iloc[idxs].index
 
 
     """ get attribute """
@@ -91,7 +93,7 @@ class GeoDigraph(Digraph):
 
 
     """ transfrom """
-    def transform_node_seq_to_df_edge(self, node_lst:list, on:list=['src', 'dst'], attrs:list=None):
+    def transform_node_seq_to_df_edge(self, node_lst:np.ndarray, on:list=['src', 'dst'], attrs:list=None):
         """Convert the id sequence of nodes into an ordered edges. 
 
         Args:
@@ -104,11 +106,12 @@ class GeoDigraph(Digraph):
         if len(node_lst) <= 1:
             return None
         
-        df = gpd.GeoDataFrame([ {on[0]: node_lst[i], on[1]: node_lst[i+1]} for i in range(len(node_lst)-1) ])
+        df = pd.DataFrame({on[0]: node_lst[:-1], 
+                           on[1]: node_lst[1:]})
         if attrs is None:
-            return df.merge(self.df_edges, on=on)
+            return gpd.GeoDataFrame(df.merge(self.df_edges, on=on))
         
-        return df.merge(self.df_edges, on=on)[attrs]
+        return gpd.GeoDataFrame(df.merge(self.df_edges[on + attrs], on=on))
 
 
     def transform_node_seq_to_polyline(self, node_lst:list):

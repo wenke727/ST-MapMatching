@@ -183,7 +183,7 @@ def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twowa
     timer.start()
     df_nodes = gpd.GeoDataFrame.from_dict(node_handler.nodes, orient='index')
     df_nodes.set_crs('epsg:4326', inplace=True)
-    df_edges = gpd.GeoDataFrame(way_handler.edges, crs=crs)
+    df_edges = pd.DataFrame(way_handler.edges)
     df_edges.loc[:, 'dist'] = cal_od_straight_distance(df_edges, df_nodes)
     print(f"Transform to Dataframe: {timer.stop():.2f} s, node len: {df_nodes.shape[0]}")
 
@@ -202,19 +202,19 @@ def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twowa
         lambda x: LineString([df_nodes.loc[i].geometry.coords[0] for i in x]))
     print(f"Transform coords seq to geometry: {timer.stop():.2f} s")
     
-    # TODO bidirectional ways
+    # bidirectional ways
     if twoway:
         timer.start()
         df_edges = add_reverse_edge(df_edges, df_ways, offset=offset)
         print(f"Process twoway edges: {timer.stop():.2f} s")
     
-    df_nodes.set_crs(crs, inplace=True)
-    df_edges.set_crs(crs, inplace=True)
+    df_edges = gpd.GeoDataFrame(df_edges, crs=crs)
     if 'eid' not in df_edges:
         df_edges.reset_index(inplace=True, drop=True)
         df_edges.loc[:, 'eid'] = df_edges.index
     assert (df_edges.eid == df_edges.index).sum() / df_edges.shape[0] == 1, "Check eid"
-
+    print("Check the index sequence: ", (df_edges.index.values - range(df_edges.shape[0])).sum())  
+    
     return df_nodes, df_edges, df_ways
 
 
@@ -223,13 +223,14 @@ if __name__ == "__main__":
     # fn = "/home/pcl/factory/ST-MapMatching/cache/GBA.osm.xml"
     # fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
     timer = Timer()
-    fn = "../cache/Futian.osm.xml"
+    fn = "../../cache/Shenzhen.osm.xml"
     df_nodes, df_edges, df_ways = parse_xml_to_graph(fn)
-            
+
     """ 测试最短路算法 """
     timer.start()
     from graph.geograph import GeoDigraph
     digraph = GeoDigraph(df_edges, df_nodes)
+    # digraph.save_checkpoint('../../cache/Shenzhen_graph_12.0.ckpt')
 
     timer.start()
     path = digraph.search(src=7959990710, dst=499265789)

@@ -116,8 +116,9 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
     if len(cands[0]) == 0:
         return None
     
+    # FIXME
     df_cand = pd.DataFrame.from_dict({pid: [order_2_idx[i] for i in cands[0]], 
-                                      eid: cands[1]})
+                                      eid: edges.iloc[cands[1]].index})
     df_cand = df_cand.merge(points['geometry'], left_on=pid, right_index=True)\
                      .merge(edges[edge_attrs], left_on=eid, right_index=True)\
                      .rename(columns={'geometry_x': 'point_geom', 'geometry_y': 'edge_geom'})\
@@ -137,19 +138,6 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
         return None
     
     return _df_cands
-
-
-def project_point_to_line_segment(df_edges, traj_points, cands, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
-    # `len` was an required attribute in graph, while `seg` only use in the first/final step
-    def f(x): return point_to_polyline_process(
-        traj_points.loc[x.pid].geometry,
-        df_edges.loc[x.eid].geometry,
-        coord_sys=True
-    )
-    res = cands.apply(f, axis=1, result_type='expand')[keep_cols]
-    cands[keep_cols] = res
-
-    return res
 
 
 def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
@@ -177,6 +165,18 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
     return _dist
 
 
+def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
+    # `len` was an required attribute in graph, while `seg` only use in the first/final step
+    def func(x): return point_to_polyline_process(
+        x.points, x.edges, coord_sys=True
+    )
+
+    df = pd.DataFrame({'points': points, "edges": edges})
+    res = df.apply(func, axis=1, result_type='expand')[keep_cols]
+
+    return res
+
+
 def analyse_geometric_info(
                    points:gpd.GeoDataFrame, 
                    edges:gpd.GeoDataFrame, 
@@ -195,7 +195,10 @@ def analyse_geometric_info(
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
     
-    project_point_to_line_segment(edges, points, cands)
+    keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']
+    cands[keep_cols] = project_point_to_line_segment(cands.point_geom, cands.edge_geom, keep_cols)
+    # cands = pd.concat([cands, project_info], axis=1)
+    
     cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
     
     return cands

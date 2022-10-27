@@ -36,7 +36,8 @@ def cal_traj_distance(points):
 """ Geometric info"""
 def _move_dir_similarity(traj:GeoDigraph, graph:GeoDataFrame, geograph):
     # if 'geometry' not in list(graph):
-    # TODO
+    # TODO 获得 polyline -> combine_edges_gemos_to_polyline()
+    # graph[['eid_0', 'eid_1', 'eid_list', 'path']]
     graph.loc[:, 'geometry'] = graph.path.apply(geograph.transform_node_seq_to_polyline)
                 
     graph.loc[:, 'move_dir'] = graph.apply(
