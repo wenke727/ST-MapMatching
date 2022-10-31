@@ -28,7 +28,7 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, legend=Tru
     else:
         traj.plot(ax=ax, alpha=.6, color='white')
         ax.axis('off')
-        add_basemap(ax=ax, alpha=.5)
+        add_basemap(ax=ax, alpha=.5, reset_extent=False)
         # plot_geodata(traj, scale=scale, alpha=.6, color='white', ax=ax)
 
     # OD

@@ -6,18 +6,13 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 
 import sys
-
 sys.path.append('..')
 
 from utils.timer import Timer
 from graph.geograph import GeoDigraph
 from geo.haversine import haversine_np, Unit
-from geo.geo_helper import point_to_polyline_process, coords_pair_dist, geom_series_distance
 from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAngle
-from match.geometricAnalysis import project_point_to_line_segment, cal_observ_prob
 from match.candidatesGraph import construct_graph
-
-pd.set_option('display.max_columns', 500)
 
 
 """ candidatesGraph """
@@ -34,37 +29,40 @@ def cal_traj_distance(points):
 
 
 """ Geometric info"""
-def _move_dir_similarity(traj:GeoDigraph, graph:GeoDataFrame, geograph):
-    # if 'geometry' not in list(graph):
-    # TODO 获得 polyline -> combine_edges_gemos_to_polyline()
-    # graph[['eid_0', 'eid_1', 'eid_list', 'path']]
-    graph.loc[:, 'geometry'] = graph.path.apply(geograph.transform_node_seq_to_polyline)
-                
-    graph.loc[:, 'move_dir'] = graph.apply(
-        lambda x: 
-            azimuthAngle(*traj.iloc[x.pid_0].geometry.coords[0], 
-                         *traj.iloc[x.pid_1].geometry.coords[0]),
-        axis=1
-    )
-    
-    graph.loc[:, 'f_dir'] = graph.apply(
-        lambda x: 
-            (azimuth_cos_similarity_for_linestring(x.geometry, x.move_dir, weight=True) + 1) / 2
-                if x.geometry is not None else 1, 
-        axis=1
-    )
+def cal_move_dir_prob(traj:GeoDigraph, gt:GeoDataFrame):
+    assert 'geometry' in gt, "Check the geometry of gt"
 
+    """ check geometry is almost equals """
+    if False:
+        geoms = gt.path.apply(geograph.transform_node_seq_to_polyline)
+        geoms.geom_almost_equals(graph.loc[:, 'geometry'])
+        cond = gpd.GeoDataFrame(gt).geom_almost_equals(gpd.GeoSeries(geoms))
+        flag = cond.mean()
+        if flag != 1:
+            print("check details")
+        graph.loc[:, 'geometry'] = geoms
+    
+    cal_move_dir = lambda x: azimuthAngle(*traj.iloc[x.pid_0].geometry.coords[0], 
+                                          *traj.iloc[x.pid_1].geometry.coords[0])
+    # BUG x.geometry 为途径路段, 是否增加第一段和最后一段的edge
+    cal_f_simil = lambda x: (azimuth_cos_similarity_for_linestring(x.geometry, x.move_dir, weight=True) + 1) / 2\
+                                if x.geometry is not None else 1
+    
+    gt.loc[:, 'move_dir'] = gt.apply(cal_move_dir, axis=1)
+    gt.loc[:, 'f_dir'] = gt.apply(cal_f_simil, axis=1)
+    gt.loc[gt.flag==1, 'f_dir'] = 1
+
+    tmp = gt[['eid_0', 'eid_1', 'pid_0', 'pid_1', 'path', 'eid_list']]
     # FIXME Manually change the `f_dir` weights of the starting and ending on the same line segment
     # same_link_mask = graph.eid_0 == graph.eid_1
     # graph.loc[same_link_mask, 'f_dir'] = 1
     
-    return graph
+    return gt
 
 
 """ topological info """
-def _trans_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int, max_dist:int):
-    same_link_mask = gt.eid_0 == gt.eid_1
-    ods = gt[~same_link_mask][['dst', 'src']].drop_duplicates().values
+def cal_trans_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int, max_dist:int):
+    ods = gt[['dst', 'src']].drop_duplicates().values
 
     if len(ods) > 0:
         routes = []
@@ -79,9 +77,23 @@ def _trans_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int, max_dist:int):
         # transmission probability
         gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
 
-    gt.loc[same_link_mask, 'path'] = gt.loc[same_link_mask, 'eid_0'].apply(
-        lambda x: net.get_edge(x, att=['src', 'dst']).values.tolist())
+    # BUG (o, d) 位于同一 edge 上的处理方式
+    same_link_mask = gt.eid_0 == gt.eid_1
+    # gt.loc[same_link_mask, 'path'] = None
+    # gt.loc[same_link_mask, 'eid_list'] = None
     gt.loc[same_link_mask, 'v'] = 1
+    
+    # _gt = gt[same_link_mask]
+    # cond = _gt.apply(lambda x: net.get_edge(x.eid_0, 'dist') - x.offset_1 < x.offset_0, axis=1)
+    # revert_idxs = cond[~cond].index
+    # normal_idxs = cond[cond].index
+    
+    # if len(normal_idxs):
+    #     gt.loc[normal_idxs, 'path'] = None
+    #     gt.loc[normal_idxs, 'eid_list'] = None
+    #     gt.loc[normal_idxs, 'v'] = 1
+    # if len(revert_idxs):
+    #     pass
     
     return gt
 
@@ -101,16 +113,15 @@ def analyse_spatial_info(geograph:GeoDigraph,
     """
     gt = construct_graph(cands)
     
-    # 存在节点没有匹配的情况，目前的策略是忽略
+    # 存在节点没有匹配的情况，目前的策略是忽略，还有顺序的问题
     dist = cal_traj_distance(points.loc[cands.pid.unique()])
     gt = gt.merge(dist, on=['pid_0', 'pid_1'])
     
-    gt = _trans_prob(gt, geograph, max_steps, max_dist)
+    gt = cal_trans_prob(gt, geograph, max_steps, max_dist)
     if dir_trans:
-        gt = _move_dir_similarity(points, gt, geograph)
+        gt = cal_move_dir_prob(points, gt)
     
     # FIXME
-    # spatial analysis: observ_prob * trans_prob
     # gt.loc[:, 'f'] = gt.observ_prob * gt.v * (gt.f_dir if dir_trans else 1)
     gt.loc[:, 'f'] = gt.v * (gt.f_dir if dir_trans else 1)
 
@@ -132,7 +143,7 @@ def _load_test_data():
     cands.loc[:, 'point_geom'] = cands.point_geom.apply(wkt.loads)
     
     # 读取基础路网
-    fn = '../../cache/Shenzhen_graph.ckpt'
+    fn = '../../cache/Shenzhen_graph_9.ckpt'
     geograph = build_geograph(ckpt=fn)
 
     return geograph, points, cands
@@ -143,67 +154,3 @@ if __name__ == "__main__":
     cands, gt = analyse_spatial_info(geograph, points, cands, True)
     
     
-#%%
-    # 构建优先队列, 最小堆
-    def temp():
-        queue = []
-        factor = 5
-        counter = 0
-
-        for level, links in layers.items():
-            for eid_0, nxts in links.items():
-                remained_nodes = set()
-                for eid_1 in nxts:
-                    counter += 1
-                    _dict = gt[(eid_0, eid_1)]
-                    route = geograph.search(_dict['src'], _dict['dst'])
-                    if 'cost' not in route:
-                        continue
-                    # if queue and info.get('cost', np.inf) > queue[0][0] * factor:
-                        # continue
-                    # remained_nodes.add(d)
-
-                    _dict.update(route)
-                    # record = (eid_0.)
-                    heapq.heappush(queue, (route['cost'], (eid_0, eid_1)))
-                    
-            break
-
-        print(len(remained_nodes), len(queue) / counter)
-            
-        queue
-
-#%%
-def tmp():
-    # ! 分层分析, 通过领域知识计算一个权重
-    gt = graph.copy()
-
-    # %%
-    id = 0
-    lvl = gt.set_index('pid_0').loc[id]
-    func = lambda x: geograph.search(x.dst, x.src)
-    routes = lvl.apply(func, axis=1, result_type='expand')
-    lvl = pd.concat([lvl, routes], axis=1)
-    lvl.loc[:, 'w'] = lvl.cost + lvl.offset_0 + lvl.offset_1 
-
-    # 距离都是通过 haversine 计算出来的1
-    lvl['w'].min(), lvl['w'].max(), lvl['d_euc'].unique()
-
-    # %%
-    dist_factor = 2
-    print(lvl.query(f" w > w.min() * {dist_factor}")['eid_1'].unique())
-    print(lvl['eid_1'].unique())
-    lvl
-    # %%
-
-    from db.db_process import gdf_to_postgis
-
-    gdf_to_postgis(geograph.df_edges, 'topo_osm_shenzhen_edge')
-    gdf_to_postgis(geograph.df_nodes, 'topo_osm_shenzhen_node')
-    # gdf_to_postgis(geograph.df_edges.drop(columns=['geom_origin', 'waypoints']), "topo_osm_shenzhen_node")
-    
-    # geograph.df_edges.drop(columns=['geom_origin', 'waypoints']).to_file('./nodes.geojson', driver="GeoJSON")
-    arrs = np.unique(np.array(gt.loc[0].index.levels).flatten())
-    len(arrs)
-
-# %%

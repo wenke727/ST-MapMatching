@@ -30,13 +30,18 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, *args, **kw
     
 
 if __name__ == "__main__":
+    # new graph
     graph = build_geograph("../../cache/Shenzhen.osm.xml")
-    graph.save_checkpoint('../../cache/Shenzhen_graph_9.graph.ckpt')
+    graph.save_checkpoint('../../cache/Shenzhen_graph_9.ckpt')
     
+    # load ckpt
+    # graph = build_geograph(ckpt='../../cache/Shenzhen_graph_9.ckpt')
+    
+    # check
     path = graph.search(src=7959990710, dst=499265789)
     graph.df_nodes.loc[path['path']].plot()
 
-    # # save to DB
+    # save to DB
     # gdf_to_postgis(graph.df_edges.rename(columns={'highway': 'road_type'}), 'topo_osm_shenzhen_edge')
     # gdf_to_postgis(graph.df_nodes, 'topo_osm_shenzhen_node')
     

@@ -110,13 +110,14 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
     if len(edge_attrs) != len(_edge_attrs):
         logger.warning(f"Check edge attrs, only exists: {edge_attrs}")
     
-    order_2_idx = {i: idx for i, idx in enumerate(points.index)}
     boxes = points.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
+    # The first subarray contains input geometry integer indexes.
+    # The second subarray contains tree geometry integer indexes.
     cands = edges.sindex.query_bulk(boxes, predicate=predicate)
     if len(cands[0]) == 0:
         return None
     
-    # FIXME
+    order_2_idx = {i: idx for i, idx in enumerate(points.index)}
     df_cand = pd.DataFrame.from_dict({pid: [order_2_idx[i] for i in cands[0]], 
                                       eid: edges.iloc[cands[1]].index})
     df_cand = df_cand.merge(points['geometry'], left_on=pid, right_index=True)\
@@ -124,8 +125,6 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
                      .rename(columns={'geometry_x': 'point_geom', 'geometry_y': 'edge_geom'})\
                      .sort_index()
     
-    # FIXME 此处会有性能瓶颈, 可考虑使用近似
-    # df_cand.loc[:, 'dist_p2c'] = df_cand.apply(lambda x: x.point_geom.distance(x.edge_geom) / DIS_FACTOR, axis=1)
     if ll:
         df_cand.loc[:, 'dist_p2c'] = geom_series_distance(df_cand.point_geom, df_cand.edge_geom, crs_wgs, crs_prj)
     else:

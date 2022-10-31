@@ -3,8 +3,6 @@ import os
 import pandas as pd
 import geopandas as gpd
 
-# from DigraphOSM import DigraphOSM
-
 from utils.timer import Timer
 from graph import GeoDigraph
 from geo.coord.coordTransfrom_shp import coord_transfer
@@ -18,8 +16,13 @@ from match.spatialAnalysis import analyse_spatial_info
 from match.geometricAnalysis import analyse_geometric_info
 from match.visualization import matching_debug_level, plot_matching
 
-pd.set_option('display.width', 5000)        # 打印结果不换行方法
 from utils.logger_helper import make_logger
+
+
+pd.set_option('display.max_columns', 50)
+pd.set_option('display.max_rows', 1000)
+pd.set_option('display.width', 5000)        # 打印结果不换行方法
+
 
 #%%
 
@@ -137,7 +140,7 @@ class ST_Matching(Trajectory):
                                top_k=top_k if top_k is not None else self.top_k_candidates, 
                                radius=self.cand_search_radius,
                                edge_keys=['way_id', 'dir'], 
-                               edge_attrs=['src', 'dst', 'way_id', 'dir', 'geometry'],
+                               edge_attrs=['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
                                pid='pid',
                                eid='eid',
                                ll=True,
@@ -152,7 +155,7 @@ class ST_Matching(Trajectory):
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
-            route = self.net.get_edge(eid)
+            route = self.net.get_edge(eid, reset_index=True)
             return route
         
         cands, graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
@@ -173,7 +176,7 @@ class ST_Matching(Trajectory):
 
   
     """ debug helper """
-    def matching_debug(self, traj, graph, save=True):
+    def matching_debug(self, traj, graph, save='../debug'):
         """matching debug
 
         Args:
@@ -190,7 +193,7 @@ class ST_Matching(Trajectory):
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values
         for layer in layer_ids:
             df_layer = graph.loc[layer]
-            matching_debug_level(traj, df_layer, layer, save)
+            matching_debug_level(self.net, traj, df_layer, layer, save)
         
         return
 
@@ -211,32 +214,14 @@ if __name__ == "__main__":
     # net = build_geograph(ckpt='../cache/Shenzhen_graph_12.0.ckpt')
     net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
     self = ST_Matching(net=net)
-
+    
     # # github演示数据
-    # 真实车辆轨迹
-    traj = self.load_points("../input/traj_1.geojson")
-    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    # traj = self.load_points("../input/traj_0.geojson")
+    # path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
 
-    # github演示数据
-    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
-    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
+    path = self.matching(traj, plot=True, top_k=3, dir_trans=True, debug_in_levels=False)
     
-    # github演示数据
-    traj = self.load_points("../input/traj_0.geojson")
-    path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-
-
-#%%
-    # traj = matcher.load_points("../input/traj_0.geojson")
-    # path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
- 
-    # from db.db_process import gdf_to_postgis
-    # net.df_edges.loc[:, 'eid'] = net.df_edges.index
-    # gdf_to_postgis(net.df_edges, 'topo_osm_shenzhen_edge')
-    # gdf_to_postgis(net.df_nodes, 'topo_osm_shenzhen_node')
-
-    
-    # 真实车辆移动轨迹
-    # traj = matcher.load_points("../input/traj_1.geojson")
-    # path = matcher.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-
+    # # github演示数据
+    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
+    # path = self.matching(traj, plot=True, dir_trans=False, debug_in_levels=False)

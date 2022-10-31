@@ -148,7 +148,8 @@ class NodeHandler(osmium.SimpleHandler):
         osm_highway = n.tags.get('highway')
         ctrl_type = 'signal' if (osm_highway is not None) and 'signal' in osm_highway else None
 
-        item = {'name': osm_node_name, 
+        item = {'nid': osm_node_id,
+                'name': osm_node_name, 
                 'highway': osm_highway, 
                 'ctrl_type': ctrl_type, 
                 "x": lon,

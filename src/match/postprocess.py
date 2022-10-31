@@ -1,7 +1,8 @@
-from xmlrpc.client import Boolean
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import LineString
+from traitlets import Bool
+
 from utils.timer import Timer
 from graph import GeoDigraph
 
@@ -11,7 +12,7 @@ def get_path(net:GeoDigraph,
              rList:gpd.GeoDataFrame, 
              graph:gpd.GeoDataFrame, 
              cands:gpd.GeoDataFrame,
-             connector:Boolean = False
+             connector:Bool = False
              ):
     """Get path by matched sequence node.
 
@@ -22,43 +23,47 @@ def get_path(net:GeoDigraph,
 
     Returns:
         [type]: [description]
-    """
-    '''|    |   pid |   eid |         src |         dst |\n
+    
+    Example:
+        rList
+       |    |   pid |   eid |         src |         dst |\n
        |---:|------:|------:|------------:|------------:|\n
        |  0 |     0 | 17916 |  8169270272 |  2376751183 |\n
-       |  1 |     1 | 17916 |  8169270272 |  2376751183 |'''
-    # case 1
+       |  1 |     1 | 17916 |  8169270272 |  2376751183 |
+    """
+    # Case: one step
     if rList.eid.nunique() == 1:
-        # 仅有一条记录的情况, 且 `eid_1` 为 0
         path = get_one_step(net, rList, cands)
-        
         return path, get_connectors(traj, path) if connector else None
-        
-    # new 
-    rList.loc[:, 'eid_1'] = rList.eid.shift(-1).fillna(0).astype(np.int)
-    steps = rList.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
+    
+    # Case: normal
+    steps = rList.copy()
+    steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
+    steps = steps.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
                  .query('eid_0 != eid_1')\
                  .set_index(['pid_0', 'eid_0', 'eid_1'])\
-                 .merge(graph, left_index=True, right_index=True)['path']
+                 .merge(graph[['path', 'eid_list']], left_index=True, right_index=True)\
+                 .reset_index()
 
-    od_lst = np.concatenate(steps.values) if len(steps.values) > 1 else steps.values.tolist()[0]
-    od_lst = np.concatenate([
-        [rList.iloc[0]['src']], od_lst, [rList.iloc[-1]['dst']]])
-    
+    extract_eids = lambda x: np.concatenate([[x.eid_0], x.eid_list]) if x.eid_list else [x.eid_0]
+    eids = list(np.concatenate(steps.apply(extract_eids, axis = 1)))
+    eids.append(steps.iloc[-1].eid_1)
+
     timer = Timer()
     timer.start()
-    # TODO 通过 eids_list 快速定位
-    path = net.transform_node_seq_to_df_edge(od_lst)
-    print(f"transform_node_seq_to_df_edge: {timer.stop():.4f} s")
+    path = net.get_edge(eids, reset_index=True)
+    print(f"transform path by keys: {timer.stop():.5f} s")
 
-    # update geometry of the first/last step 
+    # update first/last step 
     step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
     step_n = cands.query(f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
     n = path.shape[0] - 1
     assert n > 0, "Check od list"
-
-    path.loc[0, 'geometry'], path.loc[n, 'geometry'] = LineString(step_0), LineString(step_n)
-    path.loc[0, 'memo'], path.loc[n, 'memo'] = 'first step', 'last step'
+    path.loc[0, 'geometry'] = LineString(step_0)
+    path.loc[n, 'geometry'] = LineString(step_n)
+    path.loc[0, 'memo'] = 'first step'
+    path.loc[n, 'memo'] = 'last step'
+    
     # filter empty geometry
     path = path[~path.geometry.is_empty]
     
@@ -69,13 +74,20 @@ def get_one_step(net, rList, cands):
     r = rList.iloc[0]
     step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
     step_n = cands.query(f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
-    coords = np.concatenate((step_0[0][np.newaxis, :], 
-                                step_0[[p in step_n for p in step_0]], 
-                                step_n[-1][np.newaxis, :]))
 
-    od_lst = [r.src, r.dst]
-    # TODO 通过 eids_list 快速定位
-    path = net.transform_node_seq_to_df_edge(od_lst)
+    if step_0 is None:
+        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
+        coords = step_n
+    elif step_n is None:
+        coords = step_0
+    else:
+        # 也会存在反方向的情况，但在这里先忽略不计，认为是在同一个线段上
+        coords = np.concatenate((step_0[0][np.newaxis, :], 
+                                step_0[[p in step_n for p in step_0]], 
+                                step_n[-1][np.newaxis, :])
+        )
+
+    path = net.get_edge([r.eid], reset_index=True)
     path.loc[0, 'geometry'] = LineString(coords)    
 
     return path
@@ -100,3 +112,5 @@ def get_connectors(traj, path):
         'name':['connector_0', 'connector_1']})
 
     return connectors
+
+        

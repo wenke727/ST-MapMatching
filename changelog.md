@@ -5,7 +5,37 @@
 - [ ] 聚光搜索, 流程梳理
 - [ ] 后处理的流程加速，`transform_node_seq_to_polyline`
 
-## [V1.1.7] - 2022-10-24
+## [V1.1.9] - 2022-10-31
+
+### Added
+
+- `GeoDigraph`
+  - `transform_node_seq_to_edge_seq`，通过 eid 快速访问edge，加快还原轨迹的速度
+  - `transform_edge_seq_to_polyline`
+- candidatesGraph
+  - 新增`same_edge`的判断
+
+
+### Changed
+
+- `GeoDigraph` 
+  - search 函数，增加 `eid_list` 和`geometry`属性
+  - get_edge, get_node, _get_feature函数，增加 reset_index 控制
+- `postprocess`
+  - 将原来 edge的访问索引`(src, dst)` 更改为 `eid`
+
+- `spatialAnalysis`
+  - _trans_prob, 新增(o, d) 位于同一 edge 上的处理方式
+
+
+### Deprecated
+
+- `GeoDigraph`
+  - transform_node_seq_to_polyline
+  - transform_node_seq_to_df_edge
+
+
+## [V1.1.8] - 2022-10-27
 
 ### Changed
 
@@ -16,7 +46,6 @@
 ### Fixed
 
 - `sindex.query`查询问题修正，index 的值为 item 在数据框中的序号，而非其真正索引的 `index`
-- 
 
 ## [V1.1.7] - 2022-10-24
 
