@@ -151,15 +151,23 @@ def cal_points_azimuth(geoms:list):
     return seg_angels
 
 
-def azimuth_cos_similarity_for_linestring(geom, head_azimuth, weight=True):
+def cal_azimuth_cos_dist_for_linestring(geom, head_azimuth, weight=True, offset=1):
+    if geom is None:
+        return None
+    
     if isinstance(geom, LineString):
         coords = geom.coords[:]
-    if isinstance(geom, list):
+    elif isinstance(geom, list):
         coords = geom
+    else:    
+        assert False, print(type(geom), geom)
     
     road_angels = cal_polyline_azimuth(coords)
 
     lst = azimuth_cos_similarity(road_angels, head_azimuth)
+    if offset:
+        lst = (lst + 1) / 2
+        
     if not weight:
         val = np.mean(lst)
     else:
@@ -185,13 +193,13 @@ if __name__ == '__main__':
     road_angels  = cal_polyline_azimuth(polyline)
     head_azimuth = cal_polyline_azimuth(LineString([p0.coords[0], p1.coords[0]]))
     
-    azimuth_cos_similarity_for_linestring(LineString([p0.coords[0], p1.coords[0]]), head_azimuth, True)
+    cal_azimuth_cos_dist_for_linestring(LineString([p0.coords[0], p1.coords[0]]), head_azimuth, True)
     # head_azimuth = cal_points_azimuth([p0, p1])
     # head_azimuth = cal_points_azimuth([p1, p0])
 
     # azimuth_cos_distance(road_angels, head_azimuth[0])
     
-    azimuth_cos_similarity_for_linestring(polyline, head_azimuth[0], True)
+    cal_azimuth_cos_dist_for_linestring(polyline, head_azimuth[0], True)
     
-    azimuth_cos_similarity_for_linestring(polyline, head_azimuth[0], False)
+    cal_azimuth_cos_dist_for_linestring(polyline, head_azimuth[0], False)
     

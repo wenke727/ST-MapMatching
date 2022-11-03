@@ -4,64 +4,85 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from geopandas import GeoDataFrame
+from shapely.geometry import LineString
 
 import sys
 sys.path.append('..')
 
 from utils.timer import Timer
 from graph.geograph import GeoDigraph
-from geo.haversine import haversine_np, Unit
-from geo.azimuth_helper import azimuth_cos_similarity_for_linestring, azimuthAngle
+from geo.azimuth_helper import cal_azimuth_cos_dist_for_linestring, azimuthAngle
 from match.candidatesGraph import construct_graph
 
 
-""" candidatesGraph """
-def cal_traj_distance(points):
-    coords = points.geometry.apply(lambda x: [*x.coords[0]]).values.tolist()
-    coords = np.array(coords)
-
-    dist = haversine_np(coords[:-1], coords[1:], xy=True, unit=Unit.METERS)
-    idxs = points.index
+def merge_steps(gt):
+    # x.geometry + step_0 + step_n
+    def get_coords(item):
+        if item is None or len(item) == 0:
+            return None
+        
+        return item
     
-    return pd.DataFrame({'pid_0': idxs[:-1],
-                         'pid_1':idxs[1:],
-                         'd_euc': dist})
+    def helper(x):
+        if x.geometry is None:
+            waypoints = None
+        else:
+            waypoints = x.geometry.coords[:]
+        
+        lst = []
+        first = get_coords(x.first_step)
+        last = get_coords(x.last_step)
+        
+        if first is not None:
+            lst.append(first)
+        if waypoints is not None:
+            lst.append(waypoints)
+        if last is not None:
+            lst.append(last)
 
-
-""" Geometric info"""
-def cal_move_dir_prob(traj:GeoDigraph, gt:GeoDataFrame):
-    assert 'geometry' in gt, "Check the geometry of gt"
-
-    """ check geometry is almost equals """
-    if False:
-        geoms = gt.path.apply(geograph.transform_node_seq_to_polyline)
-        geoms.geom_almost_equals(graph.loc[:, 'geometry'])
-        cond = gpd.GeoDataFrame(gt).geom_almost_equals(gpd.GeoSeries(geoms))
-        flag = cond.mean()
-        if flag != 1:
-            print("check details")
-        graph.loc[:, 'geometry'] = geoms
+        if len(lst) == 0:
+            return None
+        
+        polyine = LineString(np.concatenate(lst))
+        return polyine
     
-    cal_move_dir = lambda x: azimuthAngle(*traj.iloc[x.pid_0].geometry.coords[0], 
-                                          *traj.iloc[x.pid_1].geometry.coords[0])
-    # BUG x.geometry 为途径路段, 是否增加第一段和最后一段的edge
-    cal_f_simil = lambda x: (azimuth_cos_similarity_for_linestring(x.geometry, x.move_dir, weight=True) + 1) / 2\
-                                if x.geometry is not None else 1
-    
-    gt.loc[:, 'move_dir'] = gt.apply(cal_move_dir, axis=1)
-    gt.loc[:, 'f_dir'] = gt.apply(cal_f_simil, axis=1)
-    gt.loc[gt.flag==1, 'f_dir'] = 1
+    return gt.apply(helper, axis=1)
 
-    tmp = gt[['eid_0', 'eid_1', 'pid_0', 'pid_1', 'path', 'eid_list']]
-    # FIXME Manually change the `f_dir` weights of the starting and ending on the same line segment
-    # same_link_mask = graph.eid_0 == graph.eid_1
-    # graph.loc[same_link_mask, 'f_dir'] = 1
+
+def check_combine_steps(idx, traj, graph):
+    from tilemap import plot_geodata
+    fig, ax = plot_geodata(traj, color='r', reset_extent=False)
+
+    gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('whole_path')
+    gdf.plot(ax=ax, color='blue', alpha=.5)
+
+    _gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('geometry')
+    _gdf.plot(ax=ax, color='r', linestyle=':', alpha=.5)
+
+
+def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
+    # Add: f_dir
+    assert geom in gt, "Check the geometry of gt"
+
+    def _cal_f_similarity(x):
+        if x[geom] is None:
+            return None
+        
+        f = cal_azimuth_cos_dist_for_linestring(x[geom], x['move_dir'], weight=True)
+
+        return f
     
+    gt.loc[:, 'f_dir'] = gt.apply(_cal_f_similarity, axis=1)
+    
+    filtered_idxs = gt.query("flag == 1").index
+    gt.loc[filtered_idxs, 'f_dir'] = 1
+
     return gt
 
 
-""" topological info """
-def cal_trans_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int, max_dist:int):
+def cal_dist_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int=2000, max_dist:int=10000):
+    # Add: w, v, path, geometry
+    assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
     ods = gt[['dst', 'src']].drop_duplicates().values
 
     if len(ods) > 0:
@@ -73,32 +94,18 @@ def cal_trans_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int, max_dist:int)
         df_planning = pd.DataFrame(routes)
         gt = gt.merge(df_planning, on=['dst', 'src'], how='left')
         # `w` is the shortest path from `ci-1` to `ci`
-        gt.loc[:, 'w'] = gt.cost + gt.offset_0 + gt.offset_1 
-        # transmission probability
+        gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len 
+        # dist_transmission probability
         gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
 
-    # BUG (o, d) 位于同一 edge 上的处理方式
-    same_link_mask = gt.eid_0 == gt.eid_1
-    # gt.loc[same_link_mask, 'path'] = None
-    # gt.loc[same_link_mask, 'eid_list'] = None
-    gt.loc[same_link_mask, 'v'] = 1
-    
-    # _gt = gt[same_link_mask]
-    # cond = _gt.apply(lambda x: net.get_edge(x.eid_0, 'dist') - x.offset_1 < x.offset_0, axis=1)
-    # revert_idxs = cond[~cond].index
-    # normal_idxs = cond[cond].index
-    
-    # if len(normal_idxs):
-    #     gt.loc[normal_idxs, 'path'] = None
-    #     gt.loc[normal_idxs, 'eid_list'] = None
-    #     gt.loc[normal_idxs, 'v'] = 1
-    # if len(revert_idxs):
-    #     pass
+    # 针对 flag == 1（即 o, d 位于同一`edge`上， 且 o 的相对位置靠前）
+    filtered_idxs = gt.query("flag == 1").index
+    gt.loc[filtered_idxs, 'v'] = 1
+    gt.loc[filtered_idxs, 'path'] = None
     
     return gt
 
 
-""" spatial_analysis """
 def analyse_spatial_info(geograph:GeoDigraph, 
                          points:GeoDataFrame, 
                          cands:GeoDataFrame, 
@@ -111,19 +118,17 @@ def analyse_spatial_info(geograph:GeoDigraph,
     Special Case:
         a. same_link_same_point
     """
-    gt = construct_graph(cands)
+    gt = construct_graph(points, cands, dir_trans=dir_trans)
     
-    # 存在节点没有匹配的情况，目前的策略是忽略，还有顺序的问题
-    dist = cal_traj_distance(points.loc[cands.pid.unique()])
-    gt = gt.merge(dist, on=['pid_0', 'pid_1'])
-    
-    gt = cal_trans_prob(gt, geograph, max_steps, max_dist)
+    gt = cal_dist_prob(gt, geograph, max_steps, max_dist)
+    gt.loc[:, 'whole_path'] = merge_steps(gt)
+
     if dir_trans:
-        gt = cal_move_dir_prob(points, gt)
-    
-    # FIXME
-    # gt.loc[:, 'f'] = gt.observ_prob * gt.v * (gt.f_dir if dir_trans else 1)
-    gt.loc[:, 'f'] = gt.v * (gt.f_dir if dir_trans else 1)
+        cal_dir_prob(gt, 'whole_path')
+        # cal_dir_prob(gt, 'geometry')
+        gt.loc[:, 'f'] = gt.v * gt.f_dir
+    else:
+        gt.loc[:, 'f'] = gt.v
 
     gt = gt.drop_duplicates(gt_keys).set_index(gt_keys).sort_index()
 

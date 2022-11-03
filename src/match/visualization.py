@@ -8,7 +8,7 @@ from shapely.geometry import box
 from tilemap import plot_geodata, add_basemap
 
 
-def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, legend=True, scale=.9):
+def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=None, legend=True, scale=.9, factor=4):
     """Plot the matching situation of one pair of od.
 
     Args:
@@ -36,23 +36,28 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, legend=Tru
     traj.loc[[item.pid_1]].plot(ax=ax, marker="s", label=f'D ({dst})', zorder=9)
 
     # path
-    net.get_edge([src]).plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
     gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='path')
-    net.get_edge([dst]).plot(ax=ax, linestyle='-.', alpha=.8, label=f'last({dst}, {item.observ_prob:.2f})', color='black')
+    net.get_edge([src]).plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
+    net.get_edge([dst]).plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
 
     # aux
+    prob = item.observ_prob * item.f
     if 'f_dir' in item:
-        info = f"{item.f:.3f} ({item.observ_prob:.3f}, {item.v:.3f}, {item.f_dir:.3f})"
+        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.f:.2f} ({item.v:.2f}, {item.f_dir:.2f})"
     else:
-        info = f"{item.f:.3f} ({item.observ_prob:.3f}, {item.v:.3f})"
+        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.f:.2f}"
 
-    ax.set_title(
-        f"{src} -> {dst}: {info}", 
-        color = 'black' if item.f < 0.7 else 'red' 
-    )
+    if maximun is not None and prob == maximun:
+        color = 'red'
+    elif maximun / prob < factor:
+        color = 'blue'
+    else:
+        color = 'gray'
+    ax.set_title(f"{src} -> {dst}: {info}", color = color)
     ax.set_axis_off()
 
-    if legend: ax.legend()
+    if legend: 
+        ax.legend()
     
     return ax
     
@@ -74,15 +79,17 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
 
     rows = df_layer.index.get_level_values(0).unique()
     cols = df_layer.index.get_level_values(1).unique()
-    n_cols, n_rows = len(rows), len(cols)
+    n_rows, n_cols = len(rows), len(cols)
 
+    _max = (df_layer.observ_prob * df_layer.f).max()
+    
     plt.figure(figsize=(5*n_cols, 5*n_rows))
     for i, src in enumerate(rows):
         for j, dst in enumerate(cols):
-            ax = plt.subplot(n_rows, n_cols, i * n_rows + j + 1) 
-            matching_debug_subplot(net, traj, df_layer.loc[src].loc[dst], layer_id, src, dst, ax=ax)
+            ax = plt.subplot(n_rows, n_cols, i * n_cols + j + 1) 
+            matching_debug_subplot(net, traj, df_layer.loc[src].loc[dst], layer_id, src, dst, ax=ax, maximun=_max)
 
-    plt.suptitle(f'Level: {layer_id} (observ, dis, dir)')
+    plt.suptitle(f'Level: {layer_id} [observ / trans (dis, dir)]')
     plt.tight_layout()
     
     if debug_folder:

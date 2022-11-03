@@ -21,26 +21,32 @@
 详见 `./src/main.py`
 
 ```python
-from DigraphOSM import DigraphOSM
-from MapMathing import ST_Matching
+from matching import ST_Matching, build_geograph
 
-# step 1: 获取/加载道路网络
-from setting import PCL_BBOX
-network = DigraphOSM("PCL", bbox=PCL_BBOX)
-# 导入`深圳市预处理路网`代码如下
-# network = DigraphOSM("Shenzhen", resume='../input/ShenzhenNetwork.pkl')
+"""step 1: 获取/加载路网"""
+# 通过 bbox 获取 OSM 路网数据, xml_fn 指定存储位置
+net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
+                     xml_fn="../cache/LXD.osm.xml")
 
-# step 2: 创建地图匹配 matcher
-matcher = ST_Matching(net=network)
+# 通过读取 xml，处理后获得路网数据
+# net = build_geograph(xml="../cache/Shenzhen.osm.xml")
 
-# step 3: 加载轨迹点集合，以打石一路为例
-traj = matcher.load_points("../debug/traj_debug_dashiyilu_0.geojson", in_sys='wgs')
+# 将预处理路网保存为 ckpt
+# net.save_checkpoint('../cache/Shenzhen_graph_9.ckpt')
 
-# step 4: 开始匹配
-path = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
+# 加载 ckpt
+# net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
+
+"""step 2: 创建地图匹配 matcher"""
+matcher = ST_Matching(net=net)
+
+"""step 3: 加载轨迹点集合，以打石一路为例"""
+traj = matcher.load_points("../input/traj_debug_dashiyilu_0.geojson")
+
+"""step 4: 开始匹配"""
+# 首次匹配耗时较久，因 sindex 需重构
+path, rList = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
 ```
-
-`深圳市预处理路网`下载地址: [百度云](https://pan.baidu.com/s/11aAoAkwkNoLmQScUjEssNw), 提取码：0rmq
 
 ### 输入示例
 

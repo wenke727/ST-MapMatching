@@ -18,6 +18,7 @@ from match.visualization import matching_debug_level, plot_matching
 
 from utils.logger_helper import make_logger
 
+from utils.serialization import save_checkpoint
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 1000)
@@ -139,8 +140,9 @@ class ST_Matching(Trajectory):
                                edges=self.net.df_edges, 
                                top_k=top_k if top_k is not None else self.top_k_candidates, 
                                radius=self.cand_search_radius,
-                               edge_keys=['way_id', 'dir'], 
+                               edge_keys=[], 
                                edge_attrs=['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
+                               point_to_line_attrs=['len_0', 'len_1', 'seg_0', 'seg_1'],
                                pid='pid',
                                eid='eid',
                                ll=True,
@@ -170,13 +172,13 @@ class ST_Matching(Trajectory):
             plot_matching(self.net, traj, cands, route, plot_scale=plot_scale, satellite=False)
 
         if debug_in_levels:
-            self.matching_debug(traj, graph, True)
+            self.matching_debug(traj, graph)
         
-        return route
+        return route, rList
 
   
     """ debug helper """
-    def matching_debug(self, traj, graph, save='../debug'):
+    def matching_debug(self, traj, graph, debug_folder='../debug'):
         """matching debug
 
         Args:
@@ -186,26 +188,17 @@ class ST_Matching(Trajectory):
             net ([Digraph_OSM]): [description]
             debug (bool, optional): [description]. Defaults to True.
         """
-        # create geometry
-        self.__graph_path_2_polyline(graph)
         graph = gpd.GeoDataFrame(graph)
+        graph.geometry = graph.whole_path
+        # graph.set_geometry('whole_path', inplace=True)
 
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values
         for layer in layer_ids:
             df_layer = graph.loc[layer]
-            matching_debug_level(self.net, traj, df_layer, layer, save)
+            matching_debug_level(self.net, traj, df_layer, layer, debug_folder)
         
         return
 
-
-    """ aux functions """
-    def __graph_path_2_polyline(self, graph, overwrite=False):
-        if 'geometry' in list(graph) and not overwrite:
-            return graph
-
-        graph.loc[:, 'geometry'] = graph.path.apply(self.net.transform_node_seq_to_polyline)
-
-        return graph
 
 
 #%%
@@ -215,13 +208,31 @@ if __name__ == "__main__":
     net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
     self = ST_Matching(net=net)
     
+    
     # # github演示数据
-    # traj = self.load_points("../input/traj_0.geojson")
-    # path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
+    # traj = self.load_points("../test/data/trip_amp_hw.geojson", dp_thres=20)
+    # path = self.matching(traj, top_k=5, plot=True, dir_trans=True, debug_in_levels=False)
+    
+    # from db.db_process import gdf_to_geojson
+    # gdf_to_geojson(traj, '../test/data/trip_amp_hw_compressed.geojson')
 
-    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
-    path = self.matching(traj, plot=True, top_k=3, dir_trans=True, debug_in_levels=False)
+    # # github演示数据
+    traj = self.load_points("../input/traj_1.geojson")
+    path, rList = self.matching(traj, top_k=3, plot=True, dir_trans=True, debug_in_levels=False)
+    
+
+    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
+    # path = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=True)
     
     # # github演示数据
     # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
     # path = self.matching(traj, plot=True, dir_trans=False, debug_in_levels=False)
+
+    # data = {
+    #     "cands": cands, 
+    #     "graph": graph,
+    #     'rList': rList,
+    #     "traj": traj
+    # }
+    # save_checkpoint(data, "../debug/traj_1_data_for_viterbi.pkl")
+

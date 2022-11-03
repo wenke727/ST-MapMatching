@@ -3,7 +3,50 @@
 ## [Unreleased]
 
 - [ ] 聚光搜索, 流程梳理
-- [ ] 后处理的流程加速，`transform_node_seq_to_polyline`
+
+## [V1.2.0] - 2022-11-3
+
+### Changed
+
+- `a_star`最短路算法，完善异常输入的返回值`{'path': None, 'cost': np.inf,}`
+
+  - graph 中不存在某个节点的边，如：以`单向道路终点`为出发点的请求
+
+- candidatesGraph
+
+  将原来计划轨迹属性的部分从spatilaAnalysis部分转移
+
+  - `_identify_edge_flag`：
+    - 判断
+      - `(src, dst)`是否落在同一个edge上
+      - src 和 dst 的先后顺序
+    - 处理：对调 flag == 1 的 src 和 dst
+  - cal_traj_params
+    - d_euc
+    - move_dir
+
+- geometricAnalysis
+
+  - analyse_geometric_info 
+
+     `edge_keys` 变更为`[]`, 因为对于同一个 eid 中的不同路段，最优的候选路段不一定是最近的路段
+
+  - cal_observ_prob
+
+    在原有的基础上开根号处理，降低对距离的敏感度
+
+- spatialAnalysis
+
+  - merge_steps：合并 step_0 + wayedges + step_n
+  - `cal_dist_prob`  
+    - flag == 1的情况，将 `v`设置为 1
+  - `cal_dir_prob`
+    - 方向角相似性， 考虑 step_0 + wayedges + step_n
+    - flag == 1的情况，将 `f_dir`设置为 1
+
+- visualization
+
+  - 纠正子图显示的位置
 
 ## [V1.1.9] - 2022-10-31
 

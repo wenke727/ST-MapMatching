@@ -161,7 +161,7 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
     if normal:
         _dist /= _dist.max()
 
-    return _dist
+    return np.sqrt(_dist)
 
 
 def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
@@ -181,21 +181,23 @@ def analyse_geometric_info(
                    edges:gpd.GeoDataFrame, 
                    top_k:int=5, 
                    radius:float=50, 
-                   edge_keys:list=['way_id', 'dir'], 
+                   edge_keys:list=[], 
                    edge_attrs:list=['src', 'dst', 'way_id', 'dir', 'geometry'], 
                    pid:str='pid', 
                    eid:str='eid', 
+                   point_to_line_attrs:list=['len_0', 'len_1', 'seg_0', 'seg_1'],
                    predicate:str='intersects', 
                    ll:bool=True, 
                    ll_to_utm_dis_factor = 1e-5,
                    crs_wgs:int=4326, 
-                   crs_prj:int=900913):
+                   crs_prj:int=900913,
+    ):
     cands = get_k_neigbor_edges(points, edges, top_k, radius, edge_keys,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
     
-    keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']
-    cands[keep_cols] = project_point_to_line_segment(cands.point_geom, cands.edge_geom, keep_cols)
+    cands[point_to_line_attrs] = project_point_to_line_segment(
+        cands.point_geom, cands.edge_geom, point_to_line_attrs)
     # cands = pd.concat([cands, project_info], axis=1)
     
     cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)

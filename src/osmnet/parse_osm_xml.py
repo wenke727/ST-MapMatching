@@ -235,9 +235,7 @@ if __name__ == "__main__":
 
     timer.start()
     path = digraph.search(src=7959990710, dst=499265789)
-    df_nodes.loc[path['path']].plot()
 
-    print(path['path'])
     print(f"Map mathcing: {timer.stop():.2f} s")
 
 

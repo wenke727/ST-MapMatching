@@ -1,5 +1,6 @@
 import heapq
 import numpy as np
+from loguru import logger
 from collections import deque
 from haversine import haversine, Unit
 
@@ -42,7 +43,8 @@ def a_star(graph:dict,
            search_memo:dict={}, 
            nodes_dist_memo:dict={}, 
            max_steps:int=2000, 
-           max_dist:int=10000):
+           max_dist:int=10000,
+           level='debug'):
     """Route planning by A star algs
 
     Args:
@@ -64,11 +66,13 @@ def a_star(graph:dict,
         return res
     
     if src not in graph or dst not in graph:
-        print(f"Edge({src}, {dst})",
-            f"{', origin not in graph' if src not in graph else ', '}",
-            f"{', dest not in graph' if dst not in graph else ''}")
+        info = f"Trip ({src}, {dst})" + \
+            f"{', `src` not in graph' if src not in graph else ', '}" + \
+            f"{', `dst` not in graph' if dst not in graph else ''}"
         
-        return {"status": 1} 
+        getattr(logger, level)(info)
+        
+        return {"status": 1, 'waypoints': None, 'cost': np.inf} 
 
     queue = [(0, src)]
     came_from = {src: None}
@@ -97,13 +101,13 @@ def a_star(graph:dict,
 
     # abnormal situation
     if cur != dst:
-        res = {'path': None, 'cost': np.inf, "status": 2} 
+        res = {"status": 2, 'waypoints': None, 'cost': np.inf} 
         search_memo[(src, dst)] = res
         return res
 
     # reconstruct path
     path = _reconstruct_path(dst, came_from)
-    res = {'path':path, 'cost': distance[dst], 'status': 0}
+    res = {'status': 0, 'waypoints':path, 'cost': distance[dst]}
     search_memo[(src, dst)] = res
 
     return res

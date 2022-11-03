@@ -12,6 +12,7 @@ from graph.base import Digraph
 from graph.astar import a_star
 from utils.serialization import save_checkpoint, load_checkpoint
 
+
 class GeoDigraph(Digraph):
     def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
         self.df_edges = df_edges
@@ -24,7 +25,6 @@ class GeoDigraph(Digraph):
         
 
     def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):
-        # TODO: (src, dst) 最短路径 geometry
         route = a_star(graph=self.graph,
                        nodes=self.nodes,
                        src=src,
@@ -35,11 +35,11 @@ class GeoDigraph(Digraph):
                        max_dist=max_dist
         )
         
-        if 'eid_list' not in route:
-            route['eid_list'] = self.transform_node_seq_to_edge_seq(route['path'])
+        if 'path' not in route:
+            route['path'] = self.transform_node_seq_to_edge_seq(route['waypoints'])
         
         if geom and 'geometry' not in route:
-            lst = route['eid_list']
+            lst = route['path']
             if lst is None:
                 route['geometry'] = None
             else:
@@ -225,6 +225,6 @@ if __name__ == "__main__":
     route = network.search(src=7959990710, dst=499265789)
     # route = network.search(src=7959602916, dst=7959590857)
 
-    plot_geodata(network.df_edges.loc[route['eid_list']])
+    plot_geodata(network.df_edges.loc[route['path']])
     
-    network.transform_edge_seq_to_polyline(route['eid_list'])
+    network.transform_edge_seq_to_polyline(route['path'])

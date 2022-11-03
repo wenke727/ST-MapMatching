@@ -42,17 +42,13 @@ def get_path(net:GeoDigraph,
     steps = steps.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
                  .query('eid_0 != eid_1')\
                  .set_index(['pid_0', 'eid_0', 'eid_1'])\
-                 .merge(graph[['path', 'eid_list']], left_index=True, right_index=True)\
+                 .merge(graph[['path']], left_index=True, right_index=True)\
                  .reset_index()
 
-    extract_eids = lambda x: np.concatenate([[x.eid_0], x.eid_list]) if x.eid_list else [x.eid_0]
+    extract_eids = lambda x: np.concatenate([[x.eid_0], x.path]) if x.path else [x.eid_0]
     eids = list(np.concatenate(steps.apply(extract_eids, axis = 1)))
     eids.append(steps.iloc[-1].eid_1)
-
-    timer = Timer()
-    timer.start()
     path = net.get_edge(eids, reset_index=True)
-    print(f"transform path by keys: {timer.stop():.5f} s")
 
     # update first/last step 
     step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]

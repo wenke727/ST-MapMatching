@@ -17,9 +17,16 @@ def load_checkpoint(ckpt_file_name, obj=None):
     
 
 def save_checkpoint(obj, ckpt_file_name, ignore_att=[]):
-    try:                
+    def _save(tmp):
         with open(ckpt_file_name, 'wb') as f:
-            pickle.dump({ k: v for k, v in obj.__dict__.items() if k not in ignore_att}, f)
+            pickle.dump({ k: v for k, v in tmp.items() if k not in ignore_att}, f)
+    
+    if isinstance(obj, dict):
+         _save(obj)
+         return True
+     
+    try:                
+        _save(obj.__dict__)
         return True
     except:
         return False
