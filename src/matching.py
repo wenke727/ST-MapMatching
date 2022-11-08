@@ -1,5 +1,7 @@
 #%%
 import os
+os.environ["USE_PYGEOS"] = "1"
+
 import pandas as pd
 import geopandas as gpd
 
@@ -11,17 +13,18 @@ from setting import DEBUG_FOLDER, DIS_FACTOR
 
 from match.postprocess import get_path
 from osmnet.build_graph import build_geograph
-from match.viterbi import process_viterbi_pipeline
+from match.candidatesGraph import construct_graph
 from match.spatialAnalysis import analyse_spatial_info
 from match.geometricAnalysis import analyse_geometric_info
+from match.viterbi import process_viterbi_pipeline, find_matched_sequence
 from match.visualization import matching_debug_level, plot_matching
 
+from utils.timer import timeit
 from utils.logger_helper import make_logger
-
 from utils.serialization import save_checkpoint
 
 pd.set_option('display.max_columns', 50)
-pd.set_option('display.max_rows', 1000)
+pd.set_option('display.max_rows', 25)
 pd.set_option('display.width', 5000)        # 打印结果不换行方法
 
 
@@ -133,9 +136,8 @@ class ST_Matching(Trajectory):
     def load_points(self, fn, compress=True, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
         return self.traj_processor.load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
 
-
-    def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False):
-        timer = Timer()
+    @timeit
+    def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False, beam_search=True):
         cands = analyse_geometric_info(points=traj, 
                                edges=self.net.df_edges, 
                                top_k=top_k if top_k is not None else self.top_k_candidates, 
@@ -160,13 +162,20 @@ class ST_Matching(Trajectory):
             route = self.net.get_edge(eid, reset_index=True)
             return route
         
-        cands, graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
-        # rList_ = find_matched_sequence(cands, graph[['pid_1', 'f']])
-        rList  = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
+        if not beam_search:
+            graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
+            rList  = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
+        else:
+            gt_keys = ['pid_0', 'eid_0', 'eid_1']
+            graph = construct_graph(traj, cands, dir_trans=dir_trans)
+            graph = graph.drop_duplicates(gt_keys).set_index(gt_keys).sort_index()
+            
+            attrs = ['pid_1', 'dst', 'src', 'flag', 'first_step_len', 'last_step_len', 'first_step', 'last_step', 'd_euc', 'observ_prob']
+            if dir_trans:
+                attrs += ['move_dir']
+            _, rList, graph = find_matched_sequence(cands, graph[attrs], self.net, dir_trans)
         
-        timer.start()
         route, conns = get_path(self.net, traj, rList, graph, cands)
-        print(f"Get path: {timer.stop():.4f} s")
         
         if plot:
             plot_matching(self.net, traj, cands, route, plot_scale=plot_scale, satellite=False)
@@ -174,7 +183,14 @@ class ST_Matching(Trajectory):
         if debug_in_levels:
             self.matching_debug(traj, graph)
         
-        return route, rList
+        _dict = {
+            'cands': cands,
+            'rList': rList,
+            'graph': graph,
+            'route': route
+        }
+        
+        return route, _dict
 
   
     """ debug helper """
@@ -203,30 +219,31 @@ class ST_Matching(Trajectory):
 
 #%%
 if __name__ == "__main__":
-    # FIXME 12的版本不对, 可能是因为因为 geometry 数据不同导致的
-    # net = build_geograph(ckpt='../cache/Shenzhen_graph_12.0.ckpt')
-    net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
+    net = build_geograph(ckpt='../cache/Shenzhen_graph_9_pygeos.ckpt')
+    # net = build_geograph(ckpt='../cache/GBA_graph_9_pygeos.ckpt')
     self = ST_Matching(net=net)
     
+    # github演示数据
+    traj = self.load_points("../test/data/traj_debug_case2.geojson", dp_thres=20)
+    path, info = self.matching(traj, top_k=5, plot=False, dir_trans=True, debug_in_levels=False)
     
-    # # github演示数据
-    # traj = self.load_points("../test/data/trip_amp_hw.geojson", dp_thres=20)
-    # path = self.matching(traj, top_k=5, plot=True, dir_trans=True, debug_in_levels=False)
+    from tilemap import plot_geodata
+    plot_geodata(path, color='r')
     
     # from db.db_process import gdf_to_geojson
     # gdf_to_geojson(traj, '../test/data/trip_amp_hw_compressed.geojson')
 
     # # github演示数据
-    traj = self.load_points("../input/traj_1.geojson")
-    path, rList = self.matching(traj, top_k=3, plot=True, dir_trans=True, debug_in_levels=False)
+    traj = self.load_points("../input/traj_0.geojson")
+    path, rList = self.matching(traj, top_k=5, plot=True, dir_trans=True, debug_in_levels=False)
     
 
-    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
-    # path = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=True)
+    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
+    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=True)
     
     # # github演示数据
     # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
-    # path = self.matching(traj, plot=True, dir_trans=False, debug_in_levels=False)
+    # path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
 
     # data = {
     #     "cands": cands, 
@@ -234,5 +251,5 @@ if __name__ == "__main__":
     #     'rList': rList,
     #     "traj": traj
     # }
-    # save_checkpoint(data, "../debug/traj_1_data_for_viterbi.pkl")
+    # save_checkpoint(data, "../debug/traj_0_data_for_viterbi.pkl")
 

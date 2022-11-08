@@ -4,6 +4,8 @@ from shapely import wkt
 from haversine import haversine, Unit
 from shapely.geometry import Point, LineString
 
+from utils.timer import timeit
+
 
 def coords_pair_dist(o, d, xy=True):
     if isinstance(o, Point) and isinstance(d, Point):
@@ -79,6 +81,41 @@ def azimuthAngle(x1, y1, x2, y2):
     return angle * 180 / math.pi
 
 
+@timeit
+def azimuthAngle_np(x1, y1, x2, y2):
+    angle = 0
+    dx = x2 - x1
+    dy = y2 - y1
+    
+    ans = np.zeros_like(dx)
+    
+    x_euqal = dx == 0
+    x_smaller = dx < 0
+    x_bigger = dx > 0
+    
+    y_equal = dy == 0
+    y_smaller = dy < 0
+    y_bigger = dy > 0    
+    
+    ans[x_euqal] = 0.0
+    # ans[dx == 0 and dy == 0] = 0.0
+    ans[x_euqal & y_smaller ] = np.pi
+    
+    ans[y_equal & x_bigger] = np.pi / 2.0
+    ans[y_equal & x_smaller] = np.pi / 2.0 * 3.0
+    
+    ans[x_bigger & y_bigger] = np.arctan(dx[x_bigger & y_bigger] / dy[x_bigger & y_bigger])
+    ans[x_bigger & y_smaller] = np.pi / 2.0 \
+        + np.arctan(-dy[x_bigger & y_smaller] / dx[x_bigger & y_smaller])
+
+    ans[x_smaller & y_smaller] = np.pi \
+        + np.arctan(dx[x_smaller & y_smaller] / dy[x_smaller & y_smaller])
+    ans[x_smaller & y_bigger] = np.pi / 2.0 * 3.0 \
+        + np.arctan(dy[x_smaller & y_bigger] / -dx[x_smaller & y_bigger])
+
+    return ans * 180 / np.pi
+
+
 def azimuth_cos_similarity(angel_0:float, angel_1:float, normal=False):
     """Calculate the `cosine similarity` bewteen `angel_0` and `angel_1`.
 
@@ -151,7 +188,7 @@ def cal_points_azimuth(geoms:list):
     return seg_angels
 
 
-def cal_azimuth_cos_dist_for_linestring(geom, head_azimuth, weight=True, offset=1):
+def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if geom is None:
         return None
     
@@ -193,13 +230,13 @@ if __name__ == '__main__':
     road_angels  = cal_polyline_azimuth(polyline)
     head_azimuth = cal_polyline_azimuth(LineString([p0.coords[0], p1.coords[0]]))
     
-    cal_azimuth_cos_dist_for_linestring(LineString([p0.coords[0], p1.coords[0]]), head_azimuth, True)
+    cal_linestring_azimuth_cos_dist(LineString([p0.coords[0], p1.coords[0]]), head_azimuth, True)
     # head_azimuth = cal_points_azimuth([p0, p1])
     # head_azimuth = cal_points_azimuth([p1, p0])
 
     # azimuth_cos_distance(road_angels, head_azimuth[0])
     
-    cal_azimuth_cos_dist_for_linestring(polyline, head_azimuth[0], True)
+    cal_linestring_azimuth_cos_dist(polyline, head_azimuth[0], True)
     
-    cal_azimuth_cos_dist_for_linestring(polyline, head_azimuth[0], False)
+    cal_linestring_azimuth_cos_dist(polyline, head_azimuth[0], False)
     

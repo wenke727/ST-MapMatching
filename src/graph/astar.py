@@ -4,6 +4,7 @@ from loguru import logger
 from collections import deque
 from haversine import haversine, Unit
 
+# TODO: 寻找更快速的最短路算法， maybe bidirection Astar
 
 def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord'):
     assert src in nodes and dst in nodes, "Check the input o and d."

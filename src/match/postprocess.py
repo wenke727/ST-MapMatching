@@ -3,10 +3,11 @@ import geopandas as gpd
 from shapely.geometry import LineString
 from traitlets import Bool
 
-from utils.timer import Timer
 from graph import GeoDigraph
+from utils.timer import Timer, timeit
 
 
+@timeit
 def get_path(net:GeoDigraph, 
              traj:gpd.GeoDataFrame, 
              rList:gpd.GeoDataFrame, 
@@ -91,7 +92,7 @@ def get_one_step(net, rList, cands):
 
 def get_connectors(traj, path):
     p_0, p_n = traj.iloc[0].geometry, traj.iloc[-1].geometry
-    # BUG path 的 geometry 为空
+    # BUG geometry 为空
     try:
         connector_0 = LineString([(p_0.x, p_0.y), path.loc[0, 'geometry'].coords[0]])
     except:

@@ -1,3 +1,6 @@
+import os
+os.environ["USE_PYGEOS"] = "1"
+
 import sys
 sys.path.append('..')
 
@@ -17,7 +20,6 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, *args, **kw
     if ckpt:
         return load_geograph(ckpt)
 
-    # TODO df_ways
     download_osm_xml(xml_fn, bbox, False)
     df_nodes, df_edges, df_ways = parse_xml_to_graph(xml_fn, *args, **kwargs)
     
@@ -31,17 +33,19 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, *args, **kw
 
 if __name__ == "__main__":
     # new graph
-    # graph = build_geograph("../../cache/Shenzhen.osm.xml")
-    # graph.save_checkpoint('../../cache/Shenzhen_graph_9.ckpt')
+    name = 'GBA'
+    graph = build_geograph(f"../../cache/{name}.osm.xml")
+    graph.save_checkpoint(f'../../cache/{name}_graph_9_pygeos.ckpt')
     
     # load ckpt
-    graph = build_geograph(ckpt='../../cache/Shenzhen_graph_9.ckpt')
+    graph = build_geograph(ckpt=f'../../cache/{name}_graph_9_pygeos.ckpt')
     
     # check
     path = graph.search(src=7959990710, dst=499265789)
     graph.get_edge(path['path']).plot()
 
     # save to DB
-    # gdf_to_postgis(graph.df_edges.rename(columns={'highway': 'road_type'}), 'topo_osm_shenzhen_edge')
-    # gdf_to_postgis(graph.df_nodes, 'topo_osm_shenzhen_node')
+    from utils.db import gdf_to_postgis
+    gdf_to_postgis(graph.df_edges.rename(columns={'highway': 'road_type'}), f'topo_osm_{name}_edge')
+    gdf_to_postgis(graph.df_nodes, f'topo_osm_{name}_node')
     

@@ -1,13 +1,11 @@
-#%%
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from loguru import logger
 from shapely.geometry import box
 
-import sys
-sys.path.append('../')
-from geo.geo_helper import geom_series_distance, point_to_polyline_process
+from utils.timer import timeit
+from geo.geo_helper import geom_series_distance, project_point_to_polyline
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -26,7 +24,12 @@ def _plot_candidates(points, edges, match_res):
     return 
 
 
-def _filter_candidate(df_candidates: gpd.GeoDataFrame, top_k: int = 5, pid: str = 'pid', edge_keys: list = ['way_id', 'dir'], level='info'):
+def _filter_candidate(df_candidates: gpd.GeoDataFrame,
+                      top_k: int = 5,
+                      pid: str = 'pid',
+                      edge_keys: list = ['way_id', 'dir'],
+                      level='info'
+                      ):
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
 
     Args:
@@ -38,7 +41,7 @@ def _filter_candidate(df_candidates: gpd.GeoDataFrame, top_k: int = 5, pid: str 
     Returns:
         gpd.GeoDataFrame: The filtered candidates.
     """
-    df = df_candidates.copy()
+    df = df_candidates
     origin_size = df.shape[0]
 
     df = df.sort_values([pid, 'dist_p2c'], ascending=[True, True])
@@ -52,19 +55,19 @@ def _filter_candidate(df_candidates: gpd.GeoDataFrame, top_k: int = 5, pid: str 
     return df
 
 
-def get_k_neigbor_edges(points:gpd.GeoDataFrame, 
-                   edges:gpd.GeoDataFrame, 
-                   top_k:int=5, 
-                   radius:float=50, 
-                   edge_keys:list=['way_id', 'dir'], 
-                   edge_attrs:list=['src', 'dst', 'way_id', 'dir', 'geometry'], 
-                   pid:str='pid', 
-                   eid:str='eid', 
-                   predicate:str='intersects', 
-                   ll:bool=True, 
-                   ll_to_utm_dis_factor = 1e-5,
-                   crs_wgs:int=4326, 
-                   crs_prj:int=900913):
+def get_k_neigbor_edges(points: gpd.GeoDataFrame,
+                        edges: gpd.GeoDataFrame,
+                        top_k: int = 5,
+                        radius: float = 50,
+                        edge_keys: list = ['way_id', 'dir'],
+                        edge_attrs: list = ['src', 'dst', 'way_id', 'dir', 'geometry'],
+                        pid: str = 'pid',
+                        eid: str = 'eid',
+                        predicate: str = 'intersects',
+                        ll: bool = True,
+                        ll_to_utm_dis_factor=1e-5,
+                        crs_wgs: int = 4326,
+                        crs_prj: int = 900913):
     """Get candidates points and its localed edge for traj, which are line segment projection of p_i to these road segs.
     This step can be efficiently perfermed with the build-in grid-based spatial index.
 
@@ -101,7 +104,6 @@ def get_k_neigbor_edges(points:gpd.GeoDataFrame,
     Returns:
         _type_: _description_
     """
-    # assert edge_attrs
     if ll:
         radius *= ll_to_utm_dis_factor
 
@@ -165,8 +167,7 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
 
 def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
-    # `len` was an required attribute in graph, while `seg` only use in the first/final step
-    def func(x): return point_to_polyline_process(
+    def func(x): return project_point_to_polyline(
         x.points, x.edges, coord_sys=True
     )
 
@@ -175,30 +176,28 @@ def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 's
 
     return res
 
-
-def analyse_geometric_info(
-                   points:gpd.GeoDataFrame, 
-                   edges:gpd.GeoDataFrame, 
-                   top_k:int=5, 
-                   radius:float=50, 
-                   edge_keys:list=[], 
-                   edge_attrs:list=['src', 'dst', 'way_id', 'dir', 'geometry'], 
-                   pid:str='pid', 
-                   eid:str='eid', 
-                   point_to_line_attrs:list=['len_0', 'len_1', 'seg_0', 'seg_1'],
-                   predicate:str='intersects', 
-                   ll:bool=True, 
-                   ll_to_utm_dis_factor = 1e-5,
-                   crs_wgs:int=4326, 
-                   crs_prj:int=900913,
-    ):
+@timeit
+def analyse_geometric_info(points: gpd.GeoDataFrame,
+                           edges: gpd.GeoDataFrame,
+                           top_k: int = 5,
+                           radius: float = 50,
+                           edge_keys: list = [],
+                           edge_attrs: list = ['src', 'dst', 'way_id', 'dir', 'geometry'],
+                           pid: str = 'pid',
+                           eid: str = 'eid',
+                           point_to_line_attrs: list = ['len_0', 'len_1', 'seg_0', 'seg_1'],
+                           predicate: str = 'intersects',
+                           ll: bool = True,
+                           ll_to_utm_dis_factor=1e-5,
+                           crs_wgs: int = 4326,
+                           crs_prj: int = 900913,
+                           ):
     cands = get_k_neigbor_edges(points, edges, top_k, radius, edge_keys,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
     
     cands[point_to_line_attrs] = project_point_to_line_segment(
         cands.point_geom, cands.edge_geom, point_to_line_attrs)
-    # cands = pd.concat([cands, project_info], axis=1)
     
     cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
     

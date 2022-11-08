@@ -6,13 +6,10 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
-import sys
-sys.path.append('..')
-
-from utils.timer import Timer
+from utils.timer import Timer, timeit
 from graph.geograph import GeoDigraph
-from geo.azimuth_helper import cal_azimuth_cos_dist_for_linestring, azimuthAngle
 from match.candidatesGraph import construct_graph
+from geo.azimuth_helper import cal_linestring_azimuth_cos_dist
 
 
 def merge_steps(gt):
@@ -43,13 +40,13 @@ def merge_steps(gt):
         if len(lst) == 0:
             return None
         
-        polyine = LineString(np.concatenate(lst))
-        return polyine
+        polyline = LineString(np.concatenate(lst))
+        return polyline
     
     return gt.apply(helper, axis=1)
 
 
-def check_combine_steps(idx, traj, graph):
+def _check_combine_steps(idx, traj, graph):
     from tilemap import plot_geodata
     fig, ax = plot_geodata(traj, color='r', reset_extent=False)
 
@@ -60,6 +57,7 @@ def check_combine_steps(idx, traj, graph):
     _gdf.plot(ax=ax, color='r', linestyle=':', alpha=.5)
 
 
+# @timeit
 def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
     # Add: f_dir
     assert geom in gt, "Check the geometry of gt"
@@ -68,7 +66,7 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
         if x[geom] is None:
             return None
         
-        f = cal_azimuth_cos_dist_for_linestring(x[geom], x['move_dir'], weight=True)
+        f = cal_linestring_azimuth_cos_dist(x[geom], x['move_dir'], weight=True)
 
         return f
     
@@ -80,11 +78,13 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
     return gt
 
 
+# @timeit
 def cal_dist_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int=2000, max_dist:int=10000):
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
     ods = gt[['dst', 'src']].drop_duplicates().values
 
+    # TODO: 简化逻辑，因为是涉及到trim，同一层重复的可能性为 0
     if len(ods) > 0:
         routes = []
         for o, d in ods:
@@ -95,28 +95,32 @@ def cal_dist_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int=2000, max_dist:
         gt = gt.merge(df_planning, on=['dst', 'src'], how='left')
         # `w` is the shortest path from `ci-1` to `ci`
         gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len 
-        # dist_transmission probability
+        # distance transmission probability
         gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
 
-    # 针对 flag == 1（即 o, d 位于同一`edge`上， 且 o 的相对位置靠前）
+    # case: flag = 1
     filtered_idxs = gt.query("flag == 1").index
     gt.loc[filtered_idxs, 'v'] = 1
     gt.loc[filtered_idxs, 'path'] = None
     
+    # case: flag = 2
+    filtered_idxs = gt.query("flag == 2").index
+    gt.loc[filtered_idxs, 'v'] *= .99
+    
     return gt
 
 
-def analyse_spatial_info(geograph:GeoDigraph, 
-                         points:GeoDataFrame, 
-                         cands:GeoDataFrame, 
-                         dir_trans=False, 
-                         max_steps:int=2e3, 
-                         max_dist:int=1e5,
-                         gt_keys:list = ['pid_0', 'eid_0', 'eid_1']):
-    """Geometric and topological info, the product of `observation prob` and the `transmission prob`
-    
-    Special Case:
-        a. same_link_same_point
+# @timeit
+def analyse_spatial_info(geograph: GeoDigraph,
+                         points: GeoDataFrame,
+                         cands: GeoDataFrame,
+                         dir_trans=False,
+                         max_steps: int = 2e3,
+                         max_dist: int = 1e5,
+                         gt_keys: list = ['pid_0', 'eid_0', 'eid_1'],
+                         geometry='whole_path'):
+    """
+    Geometric and topological info, the product of `observation prob` and the `transmission prob`
     """
     gt = construct_graph(points, cands, dir_trans=dir_trans)
     
@@ -124,15 +128,29 @@ def analyse_spatial_info(geograph:GeoDigraph,
     gt.loc[:, 'whole_path'] = merge_steps(gt)
 
     if dir_trans:
-        cal_dir_prob(gt, 'whole_path')
-        # cal_dir_prob(gt, 'geometry')
+        cal_dir_prob(gt, geometry)
         gt.loc[:, 'f'] = gt.v * gt.f_dir
     else:
         gt.loc[:, 'f'] = gt.v
 
     gt = gt.drop_duplicates(gt_keys).set_index(gt_keys).sort_index()
 
-    return cands, gt
+    return gt
+
+
+def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='whole_path'):
+    ori_index = gt.index
+    gt = cal_dist_prob(gt, net)
+    gt.index = ori_index
+    gt.loc[:, 'whole_path'] = merge_steps(gt)
+
+    if dir_trans:
+        cal_dir_prob(gt, geometry)
+        gt.loc[:, 'f'] = gt.v * gt.f_dir
+    else:
+        gt.loc[:, 'f'] = gt.v
+    
+    return gt
 
 
 def _load_test_data():
@@ -156,6 +174,6 @@ def _load_test_data():
 
 if __name__ == "__main__":
     geograph, points, cands = _load_test_data()
-    cands, gt = analyse_spatial_info(geograph, points, cands, True)
+    gt = analyse_spatial_info(geograph, points, cands, True)
     
     

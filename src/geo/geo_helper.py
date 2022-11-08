@@ -144,7 +144,7 @@ def get_vertical_dist(pointX, pointA, pointB):
     return vertical_dist
 
 
-def point_to_polyline_process(point:Point, polyline:LineString, plot=False, coord_sys=False):
+def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coord_sys=False):
     """Find the shortest distance and foot point from a point to a line segment, and split the segment into two part and update some attributes.
     
     Judge the realtion between point and the line, there are three situation:
@@ -168,7 +168,7 @@ def point_to_polyline_process(point:Point, polyline:LineString, plot=False, coor
         point = Point([2.2, 3.5])
         polyline = LineString([[-1,0], [0, 0], [1,1], [1,1], [2,3]])
 
-        info = point_to_polyline_process(point, polyline, True)
+        info = project_point_to_polyline(point, polyline, True)
     """
     
     def _cal_dist(point, lines, foots, factors):
@@ -276,7 +276,7 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     tmp = gpd.GeoSeries([point, polyline]).set_crs(in_crs, allow_override=True).to_crs(out_crs)
     p_, l_ = tmp.loc[0], tmp.loc[1]
     
-    res = point_to_polyline_process(p_, l_, coord_sys=True, plot=plot)
+    res = project_point_to_polyline(p_, l_, coord_sys=True, plot=plot)
     
     helper = lambda x: LineString(x) if x is not None else LineString([])
     tmp = gpd.GeoSeries([helper(res['seg_0']), helper(res['seg_1'])]).set_crs(out_crs, allow_override=True).to_crs(in_crs)

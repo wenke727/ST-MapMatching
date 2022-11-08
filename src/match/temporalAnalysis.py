@@ -10,7 +10,7 @@ def cos_similarity(self, path_, v_cal=30):
     
     num = np.sum(v_roads.T * v_cal)
     denom = np.linalg.norm(v_roads) * np.linalg.norm([v_cal for x in v_roads])
-    cos = num / denom  # 余弦值
+    cos = num / denom
     
     return cos
 

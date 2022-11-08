@@ -27,3 +27,15 @@ class Timer:
     def cumsum(self):
         """Return the accumulated time."""
         return np.array(self.times).cumsum().tolist()
+
+
+def timeit(func):
+    def inner(*args, **kwargs):
+        start = time.time()
+        res = func(*args, **kwargs)
+        end = time.time()
+        print(f"{func.__name__}, cost: {end - start: .3f} s")
+        
+        return res
+        
+    return inner

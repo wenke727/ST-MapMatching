@@ -1,14 +1,13 @@
 import numpy as np
 import pandas as pd
 
-import sys
-sys.path.append('..')
+from utils.timer import timeit
+from geo.azimuth_helper import azimuthAngle, azimuthAngle_np
 from geo.haversine import haversine_np, Unit
-from geo.azimuth_helper import azimuthAngle
 
 
-def cal_traj_params(points, move_dir=True):
-    coords = points.geometry.apply(lambda x: [*x.coords[0]]).values.tolist()
+def _cal_traj_params(points, move_dir=True):
+    coords = points.geometry.apply(lambda x: [x.x, x.y]).values.tolist()
     coords = np.array(coords)
 
     dist = haversine_np(coords[:-1], coords[1:], xy=True, unit=Unit.METERS)
@@ -18,34 +17,41 @@ def cal_traj_params(points, move_dir=True):
              'd_euc': dist}
 
     if move_dir:
-        dirs = []
-        for i in range(len(coords)-1):
-            dirs.append(
-                azimuthAngle(*coords[i], *coords[i+1])
-            )
+        dirs = azimuthAngle_np(coords[:-1][:,0], coords[:-1][:,1], 
+                               coords[1:][:,0], coords[1:][:,1])
         _dict['move_dir'] = dirs
+        # dirs = []
+        # for i in range(len(coords)-1):
+        #     dirs.append(
+        #         azimuthAngle(*coords[i], *coords[i+1])
+        #     )
+        # assert (res.move_dir.values == azimuthAngle_np(coords[:-1][:,0], coords[:-1][:,1], 
+        #                                    coords[1:][:,0], coords[1:][:,1])).all(), "Check azimuth"
+
     
-    return pd.DataFrame(_dict)
+    res = pd.DataFrame(_dict)
+    return res
 
 
 def _identify_edge_flag(gt):
     # (src, dst) on the same edge
-    # glag: 0 od不一样；1 od 位于同一条edge上，但起点相对终点位置偏前；2 相对偏后
+    # flag: 0 od 不一样；1 od 位于同一条edge上，但起点相对终点位置偏前；2 相对偏后
+    gt.loc[:, 'flag'] = 0
+
     same_edge = gt.eid_0 == gt.eid_1
     cond = (gt.dist - gt.first_step_len) < gt.last_step_len
+
     same_edge_normal = same_edge & cond
-    same_edge_revert = same_edge & (~cond)
-    
-    gt.loc[:, 'flag'] = 0
     gt.loc[same_edge_normal, 'flag'] = 1
+    gt.loc[same_edge_normal, ['src', 'dst']] = gt.loc[same_edge_normal, ['dst', 'src']].values
+
+    same_edge_revert = same_edge & (~cond)
     gt.loc[same_edge_revert, 'flag'] = 2
 
-    # gt.loc[same_edge, ['src', 'dst']] = gt.loc[same_edge, ['dst', 'src']].values
-    gt.loc[same_edge_normal, ['src', 'dst']] = gt.loc[same_edge_normal, ['dst', 'src']].values
-    
     return gt
 
 
+@timeit
 def construct_graph( points,
                      cands,
                      common_attrs=['pid', 'eid', 'mgd'],
@@ -76,8 +82,9 @@ def construct_graph( points,
 
     _identify_edge_flag(gt)
 
-    # FIXME 存在节点没有匹配的情况，目前的策略是忽略，还有顺序的问题
-    traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
+    # FIXME There is a situation where the node does not match, 
+    # the current strategy is to ignore it, and there is a problem of order
+    traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
     
     return gt

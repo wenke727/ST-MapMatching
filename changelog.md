@@ -2,7 +2,21 @@
 
 ## [Unreleased]
 
-- [ ] 聚光搜索, 流程梳理
+- [x] 聚光搜索
+
+## [V1.2.1] - 2022-11-8
+
+### Added
+
+- 使用`os.environ["USE_PYGEOS"] = "1"`矢量化操作 sindex.query
+
+- timer 模块增加`timeit`装饰器评估函数运行时间
+
+- `azimuthAngle_np` 增加矢量化计算方向角
+
+- 重构`find_matched_sequence`
+
+  按照 beam search 算法优化
 
 ## [V1.2.0] - 2022-11-3
 

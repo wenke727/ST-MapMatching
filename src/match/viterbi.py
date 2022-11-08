@@ -1,48 +1,79 @@
 import imp
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 from loguru import logger
 
+from utils.timer import timeit, Timer
+from match.spatialAnalysis import get_trans_prob_bet_layers
 
-def find_matched_sequence(cands:gpd.GeoDataFrame, graph:gpd.GeoDataFrame):
-    prev_dict, f_score = {}, {}
-    layer_ids = graph.index.get_level_values(0).unique().sort_values().values
 
-    for i, item in cands.query(f"pid=={layer_ids[0]}").iterrows():
-        f_score[i] = item.observ_prob
+def _formula(x, y, mode):
+    if mode == '+':
+        return x +  y
+    elif mode == '*':
+        return x *  y
 
-    for cur_layer_id in layer_ids:
-        df_layer     = graph.loc[cur_layer_id]
-        nxt_layer_id = df_layer.pid_1.unique()[0]
-        cur_eids     = cands.query(f"pid == {cur_layer_id}").eid
-        nxt_eids     = cands.query(f"pid == {nxt_layer_id}").eid
-
-        for j, nxt in nxt_eids.iteritems():
-            _max = -np.inf
-            for i, cur in cur_eids.iteritems():
-                info = df_layer.loc[cur].loc[nxt].to_dict()
-                _f = info['f']
-                if _f > 1.001:
-                    logger.warning(f"level {i}->{j}({cur}, {nxt}), F value {_f:.3f}, exceed 1.\n\t{info}")
-                    
-                alt = f_score[i] + _f
-                if alt > _max:
-                    _max = alt
-                    prev_dict[j] = i
-                f_score[j] = _max
-            
-    rList = []
-    c = max(f_score, key=lambda x: (f_score.get(x), x))
-    for i in range(len(layer_ids), 0, -1):
-        rList.append(c)
-        c = prev_dict[c]
-    rList.append(c)
-    rList = cands.loc[rList[::-1]][['pid', 'eid', 'src', 'dst']]
-
-    logger.info(f'max score: {c}, f_score: {f_score}\n{rList}')
+  
+@timeit
+def find_matched_sequence(cands, gt, net, dir_trans, mode='*', trim_factor=0.33):
+    layer_ids = np.sort(cands.pid.unique())
+    start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
     
-    # [8951, 1407, 1483, 118096, 117450, 23786, 123310, 123317, 658, 1581, 139265]
-    return rList
+    f_score = [{}]
+    path = {}
+    gt_beam = []
+
+    # Initialize
+    f_score[0] = start_prob
+    path = {st: [(layer_ids[0], st)] for st in start_prob }
+
+    # Run Viterbi when t > 0
+    prev_states = list(start_prob.keys())
+    times = []
+    timer = Timer()
+    
+    for idx, t in enumerate(layer_ids[:-1]):
+        df_layer = gt.query(f"pid_0 == @t and eid_0 in @prev_states")
+        prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
+
+        timer.start()
+        df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
+        times.append(timer.stop())
+        
+        df_layer.loc[:, 'prob'] = _formula(prev_probs, df_layer.f * df_layer.observ_prob, mode)
+        _max = df_layer['prob'].max()
+
+        # prune -> pick the most likely one
+        _df = df_layer[['prob']].query(f"prob > {_max * trim_factor}")\
+                                 .sort_values('prob', ascending=False)\
+                                 .groupby('eid_1')\
+                                 .head(1).reset_index()
+        
+        # post-process
+        prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
+        new_path = _df[['eid_1', "eid_0"]]\
+                        .set_index("eid_1")\
+                        .apply(lambda x: path[x.eid_0] + [(layer_ids[idx+1], x.name)], axis=1)\
+                        .to_dict()
+        
+        path = new_path
+        prev_states = list(_df.eid_1.unique())
+        gt_beam.append(df_layer)
+        f_score.append(prob_dict)
+
+    end_state = max(f_score[-1] ,key=f_score[-1].get)
+    end_prob = f_score[-1][end_state]
+    
+    rList = path[end_state]
+    rList = cands.set_index(['pid', 'eid']).loc[rList][[ 'src', 'dst']].reset_index()
+    
+    # print(np.sum(times))
+    gt_beam = pd.concat(gt_beam)
+    ratio = gt_beam.shape[0] / gt.shape[0]
+    print(f"trim ratio: {(1 - ratio)*100:.1f} %")
+    
+    return end_prob, rList, gt_beam
 
 
 def viterbi_decode(nodes, trans):

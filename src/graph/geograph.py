@@ -5,9 +5,6 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
-import sys
-sys.path.append('../')
-sys.path.append('./src')
 from graph.base import Digraph
 from graph.astar import a_star
 from utils.serialization import save_checkpoint, load_checkpoint
@@ -125,51 +122,12 @@ class GeoDigraph(Digraph):
         coords = np.concatenate(steps.geometry.apply(lambda x: x.coords), axis=0)
         
         return LineString(coords)           
-
-    # deprecated
-    def transform_node_seq_to_df_edge(self, node_lst:np.ndarray, on:list=['src', 'dst'], attrs:list=None):
-        """Convert the id sequence of nodes into an ordered edges. 
-
-        Args:
-            node_lst (list): The id sequence of nodes
-            on (list, optional): The column names of `origin` and `destination` to join on.. Defaults to ['s', 'e'].
-
-        Returns:
-            [type]: [description]
-        """
-        if len(node_lst) <= 1:
-            return None
-        
-        df = pd.DataFrame({on[0]: node_lst[:-1], 
-                           on[1]: node_lst[1:]})
-        if attrs is None:
-            return gpd.GeoDataFrame(df.merge(self.df_edges, on=on))
-        
-        return gpd.GeoDataFrame(df.merge(self.df_edges[on + attrs], on=on))
-
-    # deprecated
-    def transform_node_seq_to_polyline(self, node_lst:list):
-        """Create Linestring by node id sequence.
-
-        Args:
-            path (list): The id sequence of Coordinations.
-            net (Digraph_OSM): The Digraph_OSM object.
-
-        Returns:
-            Linestring: The linstring of the speicla sequence.
-        """
-        if node_lst is None or len(node_lst) <= 1 or np.isnan(node_lst).all():
-            return None
-        
-        steps = self.transform_node_seq_to_df_edge(node_lst, attrs=['geometry'])
-        coords = np.concatenate(steps.geometry.apply(lambda x: x.coords).values, axis=0)
-        
-        return LineString(coords)       
-        
+           
 
     """ io """
     def to_postgis(self, name):
         try:
+            from utils.db import gdf_to_postgis
             df_node_with_degree = self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
             
             gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
@@ -217,14 +175,13 @@ class GeoDigraph(Digraph):
 
 
 if __name__ == "__main__":
-    from tilemap import plot_geodata
-    
     network = GeoDigraph()
-    network.load_checkpoint(ckpt='/home/pcl/codes/ST-MapMatching/cache/Shenzhen_graph_9.ckpt')
+    network.load_checkpoint(ckpt='./cache/Shenzhen_graph_9.ckpt')
 
     route = network.search(src=7959990710, dst=499265789)
     # route = network.search(src=7959602916, dst=7959590857)
 
+    from tilemap import plot_geodata
     plot_geodata(network.df_edges.loc[route['path']])
     
     network.transform_edge_seq_to_polyline(route['path'])
