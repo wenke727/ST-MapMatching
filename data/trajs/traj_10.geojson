@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "PID": "09005700121902181123005192D", "DIR": 88, "Order": 0, "Type": "street", "X": 1269779986, "Y": 255987452, "RID": "d957e2-8486-e315-b325-e0a0a0", "MoveDir": 179, "dir_sim": 0.97600402622262106, "revert": false, "lane_num": 3.0 }, "geometry": { "type": "Point", "coordinates": [ 114.053374, 22.536374 ] } },
+{ "type": "Feature", "properties": { "PID": "09005700121902181122585292D", "DIR": 0, "Order": 1, "Type": "street", "X": 1269779987, "Y": 255989066, "RID": "d957e2-8486-e315-b325-e0a0a0", "MoveDir": 179, "dir_sim": null, "revert": false, "lane_num": 3.0 }, "geometry": { "type": "Point", "coordinates": [ 114.053374, 22.536509 ] } }
+]
+}

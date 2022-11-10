@@ -63,7 +63,8 @@ def construct_graph( points,
                             'seg_1': 'first_step',
                             'len_1': 'first_step_len',
                             'cost': 'd_sht'},
-                     dir_trans=True
+                     dir_trans=True,
+                     gt_keys=['pid_0', 'eid_0', 'eid_1']
     ):
     """
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
@@ -79,13 +80,16 @@ def construct_graph( points,
         b = tList[i+1][common_attrs + right_attrs]
         gt.append(a.merge(b, on='mgd', suffixes=["_0", '_1']).drop(columns='mgd'))
     gt = pd.concat(gt).reset_index(drop=True).rename(columns=rename_dict)
-
+    gt.loc[:, ['dst', 'src']] = gt.loc[:, ['dst', 'src']].astype(int)
+    
     _identify_edge_flag(gt)
 
     # FIXME There is a situation where the node does not match, 
     # the current strategy is to ignore it, and there is a problem of order
     traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
+    if gt_keys:
+        gt.set_index(gt_keys, inplace=True)
     
     return gt
 

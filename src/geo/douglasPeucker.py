@@ -76,8 +76,6 @@ def dp_compress_for_points(df, dis_thred=10, verbose=False, reset_index=True):
     return traj.loc[[ i[2] for i in point_lst]]
 
 
-#%%
-
 if __name__ == '__main__':
     point_list = []
     output_point_list = []
@@ -96,10 +94,3 @@ if __name__ == '__main__':
     import geopandas as gpd
     traj = gpd.read_file("../traj_for_compress.geojson")
     dp_compress_for_points(traj, 8, True)
-
-
-    # #将压缩数据写入输出文件
-    # fd=open(r".\output.txt",'w')
-    # for point in output_point_list:
-    #     fd.write("{},{},{}\n".format(point[2],point[0],point[1]))
-    # fd.close()

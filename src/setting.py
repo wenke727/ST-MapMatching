@@ -3,9 +3,8 @@ from pathlib import Path
 
 root = Path(__file__).parent
 DEBUG_FOLDER = root / "../debug"
-CACHE_FOLDER = root / "../cache"
 LOG_FOLDER   = root / "../log"
-INPUT_FOLDER = root / "../input"
+DATA_FOLDER  = root / "../data"
 
 DIS_FACTOR = 1/110/1000
 

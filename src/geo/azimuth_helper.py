@@ -81,7 +81,6 @@ def azimuthAngle(x1, y1, x2, y2):
     return angle * 180 / math.pi
 
 
-@timeit
 def azimuthAngle_np(x1, y1, x2, y2):
     angle = 0
     dx = x2 - x1

@@ -1,0 +1,16 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "index": 0, "PID": "09005700122003271208461303O", "DIR": 268, "Order": 0, "Type": "street", "X": 1269695445, "Y": 256061732, "RID": "24fd43-b288-813c-b717-c8f6f8", "pid_order": 0 }, "geometry": { "type": "Point", "coordinates": [ 114.045793, 22.542549 ] } },
+{ "type": "Feature", "properties": { "index": 31, "PID": "09005700122003271403302783O", "DIR": 268, "Order": 12, "Type": "street", "X": 1269649100, "Y": 256061810, "RID": "852936-8486-e315-b324-e0a043", "pid_order": 31 }, "geometry": { "type": "Point", "coordinates": [ 114.041645, 22.542523 ] } },
+{ "type": "Feature", "properties": { "index": 32, "PID": "09005700122003271403312563O", "DIR": 268, "Order": 0, "Type": "street", "X": 1269647736, "Y": 256061778, "RID": "d9faab-09d2-a493-b92a-06ce71", "pid_order": 32 }, "geometry": { "type": "Point", "coordinates": [ 114.041523, 22.54252 ] } },
+{ "type": "Feature", "properties": { "index": 33, "PID": "09005700122003271209165313O", "DIR": 268, "Order": 0, "Type": "street", "X": 1269647619, "Y": 256061094, "RID": "4cf167-c86e-f803-6b33-f71d66", "pid_order": 33 }, "geometry": { "type": "Point", "coordinates": [ 114.041513, 22.542463 ] } },
+{ "type": "Feature", "properties": { "index": 48, "PID": "09005700122003271209342533O", "DIR": 262, "Order": 4, "Type": "street", "X": 1269628967, "Y": 256059848, "RID": "47e199-f68d-1124-71cb-1b9515", "pid_order": 48 }, "geometry": { "type": "Point", "coordinates": [ 114.039844, 22.542342 ] } },
+{ "type": "Feature", "properties": { "index": 49, "PID": "09005700122003271209360523O", "DIR": 261, "Order": 5, "Type": "street", "X": 1269627178, "Y": 256059601, "RID": "47e199-f68d-1124-71cb-1b9515", "pid_order": 49 }, "geometry": { "type": "Point", "coordinates": [ 114.039684, 22.54232 ] } },
+{ "type": "Feature", "properties": { "index": 50, "PID": "09005700122003271209371303O", "DIR": 260, "Order": 0, "Type": "street", "X": 1269625955, "Y": 256059427, "RID": "543ddf-f5a6-16e9-6440-54d70f", "pid_order": 50 }, "geometry": { "type": "Point", "coordinates": [ 114.039574, 22.542305 ] } },
+{ "type": "Feature", "properties": { "index": 85, "PID": "09005700122003271211104943O", "DIR": 259, "Order": 10, "Type": "street", "X": 1269583400, "Y": 256052227, "RID": "6e0ac7-4562-19d2-b192-114c14", "pid_order": 85 }, "geometry": { "type": "Point", "coordinates": [ 114.035769, 22.541659 ] } },
+{ "type": "Feature", "properties": { "index": 86, "PID": "09005700122003271211116973O", "DIR": 259, "Order": 0, "Type": "street", "X": 1269582291, "Y": 256052044, "RID": "dc6a1f-5d1b-dd32-f0f7-e73be1", "pid_order": 86 }, "geometry": { "type": "Point", "coordinates": [ 114.035671, 22.541642 ] } },
+{ "type": "Feature", "properties": { "index": 87, "PID": "09005700122003271211130883O", "DIR": 259, "Order": 0, "Type": "street", "X": 1269580961, "Y": 256051828, "RID": "c8b1bb-e6c4-b2b3-b83f-9a5efd", "pid_order": 87 }, "geometry": { "type": "Point", "coordinates": [ 114.035551, 22.541622 ] } }
+]
+}

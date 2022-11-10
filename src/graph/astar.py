@@ -73,7 +73,7 @@ def a_star(graph:dict,
         
         getattr(logger, level)(info)
         
-        return {"status": 1, 'waypoints': None, 'cost': np.inf} 
+        return {"status": 1, 'waypoints': [], 'cost': np.inf} 
 
     queue = [(0, src)]
     came_from = {src: None}
@@ -102,7 +102,7 @@ def a_star(graph:dict,
 
     # abnormal situation
     if cur != dst:
-        res = {"status": 2, 'waypoints': None, 'cost': np.inf} 
+        res = {"status": 2, 'waypoints': [], 'cost': np.inf} 
         search_memo[(src, dst)] = res
         return res
 

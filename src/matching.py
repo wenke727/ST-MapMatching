@@ -4,6 +4,7 @@ os.environ["USE_PYGEOS"] = "1"
 
 import pandas as pd
 import geopandas as gpd
+import matplotlib.pyplot as plt
 
 from utils.timer import Timer
 from graph import GeoDigraph
@@ -22,6 +23,8 @@ from match.visualization import matching_debug_level, plot_matching
 from utils.timer import timeit
 from utils.logger_helper import make_logger
 from utils.serialization import save_checkpoint
+
+from setting import DATA_FOLDER
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 25)
@@ -137,48 +140,39 @@ class ST_Matching(Trajectory):
         return self.traj_processor.load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
 
     @timeit
-    def matching(self, traj, top_k=None, dir_trans=False, plot=True, plot_scale=.2, debug_in_levels=False, beam_search=True):
-        cands = analyse_geometric_info(points=traj, 
-                               edges=self.net.df_edges, 
-                               top_k=top_k if top_k is not None else self.top_k_candidates, 
-                               radius=self.cand_search_radius,
-                               edge_keys=[], 
-                               edge_attrs=['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
-                               point_to_line_attrs=['len_0', 'len_1', 'seg_0', 'seg_1'],
-                               pid='pid',
-                               eid='eid',
-                               ll=True,
-                               crs_wgs=self.crs_wgs,
-                               crs_prj=self.crs_prj
-                )
+    def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, plot=True, save_fn=None, debug_in_levels=False,):
+        top_k = top_k if top_k is not None else self.top_k_candidates
+        cands = analyse_geometric_info(points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius,
+                                       edge_keys=[], 
+                                       edge_attrs=['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
+                                       point_to_line_attrs=['len_0', 'len_1', 'seg_0', 'seg_1'], 
+                                       pid='pid', eid='eid', 
+                                       ll=True, crs_wgs=self.crs_wgs, crs_prj=self.crs_prj
+                                       )
         
         # No matched
         if cands is None:
-            return None
+            return None, None
         
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
             route = self.net.get_edge(eid, reset_index=True)
-            return route
-        
+            return route, None
+
         if not beam_search:
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
             rList  = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
         else:
-            gt_keys = ['pid_0', 'eid_0', 'eid_1']
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
-            graph = graph.drop_duplicates(gt_keys).set_index(gt_keys).sort_index()
-            
-            attrs = ['pid_1', 'dst', 'src', 'flag', 'first_step_len', 'last_step_len', 'first_step', 'last_step', 'd_euc', 'observ_prob']
-            if dir_trans:
-                attrs += ['move_dir']
-            _, rList, graph = find_matched_sequence(cands, graph[attrs], self.net, dir_trans)
+            _, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
         
         route, conns = get_path(self.net, traj, rList, graph, cands)
         
-        if plot:
-            plot_matching(self.net, traj, cands, route, plot_scale=plot_scale, satellite=False)
+        if plot or save_fn:
+            ax = plot_matching(self.net, traj, cands, route, satellite=False, save_fn=save_fn)
+            if not plot:
+               plt.close() 
 
         if debug_in_levels:
             self.matching_debug(traj, graph)
@@ -219,37 +213,11 @@ class ST_Matching(Trajectory):
 
 #%%
 if __name__ == "__main__":
-    net = build_geograph(ckpt='../cache/Shenzhen_graph_9_pygeos.ckpt')
+    
+    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_9_pygeos.ckpt')
     # net = build_geograph(ckpt='../cache/GBA_graph_9_pygeos.ckpt')
     self = ST_Matching(net=net)
     
-    # github演示数据
-    traj = self.load_points("../test/data/traj_debug_case2.geojson", dp_thres=20)
-    path, info = self.matching(traj, top_k=5, plot=False, dir_trans=True, debug_in_levels=False)
+    traj = self.load_points(DATA_FOLDER / "trajs/traj_12.geojson")
+    path, info = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=False)
     
-    from tilemap import plot_geodata
-    plot_geodata(path, color='r')
-    
-    # from db.db_process import gdf_to_geojson
-    # gdf_to_geojson(traj, '../test/data/trip_amp_hw_compressed.geojson')
-
-    # # github演示数据
-    traj = self.load_points("../input/traj_0.geojson")
-    path, rList = self.matching(traj, top_k=5, plot=True, dir_trans=True, debug_in_levels=False)
-    
-
-    traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_141.geojson")
-    path = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=True)
-    
-    # # github演示数据
-    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/test/data/traj_debug_199.geojson")
-    # path = self.matching(traj, plot=True, dir_trans=True, debug_in_levels=False)
-
-    # data = {
-    #     "cands": cands, 
-    #     "graph": graph,
-    #     'rList': rList,
-    #     "traj": traj
-    # }
-    # save_checkpoint(data, "../debug/traj_0_data_for_viterbi.pkl")
-

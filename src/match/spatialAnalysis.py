@@ -21,7 +21,7 @@ def merge_steps(gt):
         return item
     
     def helper(x):
-        if x.geometry is None:
+        if not x.geometry:
             waypoints = None
         else:
             waypoints = x.geometry.coords[:]
@@ -79,34 +79,49 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
 
 
 # @timeit
-def cal_dist_prob(gt:GeoDataFrame, net:GeoDigraph, max_steps:int=2000, max_dist:int=10000):
+def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000):
+    # # Add: w, v, path, geometry
+    # assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
+    # ods = gt[['dst', 'src']].drop_duplicates().values
+
+    # # TODO: 简化逻辑，因为是涉及到trim，同一层重复的可能性为 0
+    # if len(ods) > 0:
+    #     routes = []
+    #     for o, d in ods:
+    #         _r = net.search(o, d, max_steps=max_steps, max_dist=max_dist)
+    #         routes.append({'dst': o, 'src': d, **_r})
+            
+    #     df_planning = pd.DataFrame(routes)
+    #     gt = gt.merge(df_planning, on=['dst', 'src'], how='left')
+    #     # `w` is the shortest path from `ci-1` to `ci`
+    #     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
+    #     # distance transmission probability
+    #     gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
+
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
-    ods = gt[['dst', 'src']].drop_duplicates().values
+    assert gt.shape[0] > 0, "check the size of input dataframe"
 
-    # TODO: 简化逻辑，因为是涉及到trim，同一层重复的可能性为 0
-    if len(ods) > 0:
-        routes = []
-        for o, d in ods:
-            _r = net.search(o, d, max_steps=max_steps, max_dist=max_dist)
-            routes.append({'dst': o, 'src': d, **_r})
-            
-        df_planning = pd.DataFrame(routes)
-        gt = gt.merge(df_planning, on=['dst', 'src'], how='left')
-        # `w` is the shortest path from `ci-1` to `ci`
-        gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len 
-        # distance transmission probability
-        gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
+    paths = gt.apply(lambda x:
+                        net.search(x.dst, x.src, max_steps, max_dist),
+                     axis=1, result_type='expand')
+    gt.loc[:, list(paths)] = paths
+    # `w` is the shortest path from `ci-1` to `ci`
+    gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
+    # distance transmission probability
+    gt.loc[:, 'v'] = gt.d_euc / gt.w
+    mask = gt.v > 1
+    gt.loc[mask, 'v'] = 1 / gt.loc[mask, 'v']
 
     # case: flag = 1
     filtered_idxs = gt.query("flag == 1").index
     gt.loc[filtered_idxs, 'v'] = 1
     gt.loc[filtered_idxs, 'path'] = None
-    
+
     # case: flag = 2
     filtered_idxs = gt.query("flag == 2").index
     gt.loc[filtered_idxs, 'v'] *= .99
-    
+
     return gt
 
 
@@ -122,7 +137,7 @@ def analyse_spatial_info(geograph: GeoDigraph,
     """
     Geometric and topological info, the product of `observation prob` and the `transmission prob`
     """
-    gt = construct_graph(points, cands, dir_trans=dir_trans)
+    gt = construct_graph(points, cands, dir_trans=dir_trans, gt_keys=gt_keys)
     
     gt = cal_dist_prob(gt, geograph, max_steps, max_dist)
     gt.loc[:, 'whole_path'] = merge_steps(gt)
@@ -132,8 +147,6 @@ def analyse_spatial_info(geograph: GeoDigraph,
         gt.loc[:, 'f'] = gt.v * gt.f_dir
     else:
         gt.loc[:, 'f'] = gt.v
-
-    gt = gt.drop_duplicates(gt_keys).set_index(gt_keys).sort_index()
 
     return gt
 

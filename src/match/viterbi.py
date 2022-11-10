@@ -68,7 +68,7 @@ def find_matched_sequence(cands, gt, net, dir_trans, mode='*', trim_factor=0.33)
     rList = path[end_state]
     rList = cands.set_index(['pid', 'eid']).loc[rList][[ 'src', 'dst']].reset_index()
     
-    # print(np.sum(times))
+    print(f"Route planning time cost: {np.sum(times):.3f}")
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
     print(f"trim ratio: {(1 - ratio)*100:.1f} %")

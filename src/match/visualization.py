@@ -100,7 +100,7 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
     return True
 
 
-def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=None, categorical=True, plot_scale=.2):
+def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=None, categorical=True):
     def _base_plot():
         if column is not None and column in traj.columns:
             ax = traj.plot(alpha=.3, column=column, categorical=categorical, legend=True)
@@ -140,7 +140,7 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
     
     if save_fn is not None:
         plt.tight_layout()
-        plt.savefig(f'{save_fn}.jpg' if '.jpg' not in save_fn else save_fn, dpi=300)
+        plt.savefig(save_fn, dpi=300)
         # plt.close()
     
     return ax
