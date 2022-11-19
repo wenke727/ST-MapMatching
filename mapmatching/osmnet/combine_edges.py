@@ -4,8 +4,8 @@ import pandas as pd
 
 import sys
 sys.path.append('../')
-from utils.interval_helper import merge_intervals
-from utils.parallel_helper import parallel_process
+from ..utils.interval_helper import merge_intervals
+from ..utils.parallel_helper import parallel_process
 
 
 def calculate_degree(df_edges):

@@ -37,14 +37,14 @@ def _reconstruct_path(dst, came_from):
     return route[::-1]
 
 
-def a_star(graph:dict, 
-           nodes:dict, 
-           src:int, 
-           dst:int, 
-           search_memo:dict={}, 
-           nodes_dist_memo:dict={}, 
-           max_steps:int=2000, 
-           max_dist:int=10000,
+def a_star(graph: dict,
+           nodes: dict,
+           src: int,
+           dst: int,
+           search_memo: dict = {},
+           nodes_dist_memo: dict = {},
+           max_steps: int = 2000,
+           max_dist: int = 10000,
            level='debug'):
     """Route planning by A star algs
 
@@ -112,3 +112,4 @@ def a_star(graph:dict,
     search_memo[(src, dst)] = res
 
     return res
+

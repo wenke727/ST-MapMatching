@@ -1,11 +1,9 @@
-import imp
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 from loguru import logger
 
-from utils.timer import timeit, Timer
-from match.spatialAnalysis import get_trans_prob_bet_layers
+from .spatialAnalysis import get_trans_prob_bet_layers
+from ..utils import Timer, timeit
 
 
 def _formula(x, y, mode):
@@ -16,17 +14,14 @@ def _formula(x, y, mode):
 
   
 @timeit
-def find_matched_sequence(cands, gt, net, dir_trans, mode='*', trim_factor=0.33):
+def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
     layer_ids = np.sort(cands.pid.unique())
     start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
     
-    f_score = [{}]
-    path = {}
-    gt_beam = []
-
     # Initialize
-    f_score[0] = start_prob
+    f_score = [start_prob]
     path = {st: [(layer_ids[0], st)] for st in start_prob }
+    gt_beam = []
 
     # Run Viterbi when t > 0
     prev_states = list(start_prob.keys())
@@ -35,22 +30,25 @@ def find_matched_sequence(cands, gt, net, dir_trans, mode='*', trim_factor=0.33)
     
     for idx, t in enumerate(layer_ids[:-1]):
         df_layer = gt.query(f"pid_0 == @t and eid_0 in @prev_states")
-        prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
+        prev_probs = np.array([f_score[-1][i]
+                              for i in df_layer.index.get_level_values(1)])
 
         timer.start()
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
         times.append(timer.stop())
         
         df_layer.loc[:, 'prob'] = _formula(prev_probs, df_layer.f * df_layer.observ_prob, mode)
-        _max = df_layer['prob'].max()
+        _max_prob = df_layer['prob'].max()
 
         # prune -> pick the most likely one
-        _df = df_layer[['prob']].query(f"prob > {_max * trim_factor}")\
-                                 .sort_values('prob', ascending=False)\
-                                 .groupby('eid_1')\
-                                 .head(1).reset_index()
+        _df = df_layer[['prob']].sort_values('prob', ascending=False)\
+                                .head(100 if idx < trim_layer else 5)\
+                                .query(f"prob > {_max_prob * trim_factor}")\
+                                .groupby('eid_1')\
+                                .head(1).reset_index()
         
         # post-process
+        
         prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
         new_path = _df[['eid_1', "eid_0"]]\
                         .set_index("eid_1")\
@@ -68,10 +66,11 @@ def find_matched_sequence(cands, gt, net, dir_trans, mode='*', trim_factor=0.33)
     rList = path[end_state]
     rList = cands.set_index(['pid', 'eid']).loc[rList][[ 'src', 'dst']].reset_index()
     
-    print(f"Route planning time cost: {np.sum(times):.3f}")
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
-    print(f"trim ratio: {(1 - ratio)*100:.1f} %")
+    _log = f"Route planning time cost: {np.sum(times):.3f} s, trim ratio: {(1 - ratio)*100:.1f} %"
+    print(_log)
+    # getattr(logger, level)(_log)
     
     return end_prob, rList, gt_beam
 

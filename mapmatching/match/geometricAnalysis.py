@@ -4,8 +4,8 @@ import geopandas as gpd
 from loguru import logger
 from shapely.geometry import box
 
-from utils.timer import timeit
-from geo.geo_helper import geom_series_distance, project_point_to_polyline
+from ..utils import timeit
+from ..geo.geo_helper import geom_series_distance, project_point_to_polyline
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -28,7 +28,7 @@ def _filter_candidate(df_candidates: gpd.GeoDataFrame,
                       top_k: int = 5,
                       pid: str = 'pid',
                       edge_keys: list = ['way_id', 'dir'],
-                      level='info'
+                      level='debug'
                       ):
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
 
@@ -182,7 +182,7 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            top_k: int = 5,
                            radius: float = 50,
                            edge_keys: list = [],
-                           edge_attrs: list = ['src', 'dst', 'way_id', 'dir', 'geometry'],
+                           edge_attrs: list = ['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
                            pid: str = 'pid',
                            eid: str = 'eid',
                            point_to_line_attrs: list = ['len_0', 'len_1', 'seg_0', 'seg_1'],

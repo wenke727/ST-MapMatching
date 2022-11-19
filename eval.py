@@ -2,9 +2,9 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-from matching import ST_Matching, build_geograph
-from setting import DATA_FOLDER
-from utils.timer import Timer
+from mapmatching import ST_Matching, build_geograph
+from mapmatching.setting import DATA_FOLDER
+from mapmatching.utils.timer import Timer
 
 from loguru import logger
 

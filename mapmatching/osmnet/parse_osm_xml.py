@@ -10,15 +10,13 @@ from shapely.geometry import Point
 warnings.filterwarnings('ignore')
 
 import sys
-sys.path.append('..')
-sys.path.append('./src')
-from utils.timer import Timer
+from ..utils.timer import Timer
 from shapely.geometry import LineString
-from osmnet.osm_io import load_graph, save_graph
-from osmnet.twoway_edge import add_reverse_edge
-from osmnet.misc import Bunch, cal_od_straight_distance
-from osmnet.combine_edges import pipeline_combine_links
-from setting import highway_filters
+from ..osmnet.osm_io import load_graph, save_graph
+from ..osmnet.twoway_edge import add_reverse_edge
+from ..osmnet.misc import Bunch, cal_od_straight_distance
+from ..osmnet.combine_edges import pipeline_combine_links
+from ..setting import highway_filters
 
 
 class WayHandler(osmium.SimpleHandler):

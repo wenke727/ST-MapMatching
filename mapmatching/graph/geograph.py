@@ -1,13 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
-from graph.base import Digraph
-from graph.astar import a_star
-from utils.serialization import save_checkpoint, load_checkpoint
+from .base import Digraph
+from .astar import a_star
+from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
 class GeoDigraph(Digraph):
@@ -81,7 +80,7 @@ class GeoDigraph(Digraph):
         """
         df = getattr(self, df_name)
         if df is None:
-            print(f"Dosn't have the attibute {df_name}")
+            print(f"Don't have the attibute {df_name}")
             return None
 
         if isinstance(id, int) and id not in df.index:

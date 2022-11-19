@@ -28,16 +28,7 @@ def gdf_to_postgis(gdf, name, engine=ENGINE, if_exists='replace', *args, **kwarg
     Returns:
         [type]: [description]
     """
-    
-    # try:
-    #     gdf.to_postgis( name=name, con=engine, if_exists=if_exists )
-    #     return True
-    # except:
-    #     print('gdf_to_postgis error!')
-    
-    # return False
-
-    gdf.to_postgis( name=name, con=engine, if_exists=if_exists )
+    gdf.to_postgis(name=name, con=engine, if_exists=if_exists)
 
 
 def gdf_to_geojson(gdf, fn):

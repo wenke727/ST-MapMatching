@@ -4,8 +4,6 @@ from shapely import wkt
 from haversine import haversine, Unit
 from shapely.geometry import Point, LineString
 
-from utils.timer import timeit
-
 
 def coords_pair_dist(o, d, xy=True):
     if isinstance(o, Point) and isinstance(d, Point):

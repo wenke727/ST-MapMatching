@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 from haversine import haversine, Unit
-from shapely.geometry import Point, LineString, box
+from shapely.geometry import Point, LineString
+
 from .haversine import haversine, haversine_np, Unit
 
 

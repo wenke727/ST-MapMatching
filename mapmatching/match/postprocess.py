@@ -3,11 +3,9 @@ import geopandas as gpd
 from shapely.geometry import LineString
 from traitlets import Bool
 
-from graph import GeoDigraph
-from utils.timer import Timer, timeit
+from ..graph import GeoDigraph
 
 
-@timeit
 def get_path(net:GeoDigraph, 
              traj:gpd.GeoDataFrame, 
              rList:gpd.GeoDataFrame, 

@@ -1,5 +1,6 @@
 import time
 import numpy as np
+from loguru import logger
 
 class Timer:
     """Record multiple running times."""
@@ -34,7 +35,9 @@ def timeit(func):
         start = time.time()
         res = func(*args, **kwargs)
         end = time.time()
-        print(f"{func.__name__}, cost: {end - start: .3f} s")
+        _log = f"{func.__name__}, cost: {end - start: .3f} s"
+        print(_log)
+        # logger.info(_log)
         
         return res
         

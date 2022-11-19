@@ -18,34 +18,21 @@
 
 ## 调用说明
 
-详见 `./src/main.py`
+详见 `demo.py`
 
 ```python
-from matching import ST_Matching, build_geograph
+from mapmatching import build_geograph, ST_Matching
 
 """step 1: 获取/加载路网"""
-# 通过 bbox 获取 OSM 路网数据, xml_fn 指定存储位置
 net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
-                     xml_fn="../cache/LXD.osm.xml")
-
-# 通过读取 xml，处理后获得路网数据
-# net = build_geograph(xml="../cache/Shenzhen.osm.xml")
-
-# 将预处理路网保存为 ckpt
-# net.save_checkpoint('../cache/Shenzhen_graph_9.ckpt')
-
-# 加载 ckpt
-# net = build_geograph(ckpt='../cache/Shenzhen_graph_9.ckpt')
+                     xml_fn="./data/network/LXD.osm.xml")
 
 """step 2: 创建地图匹配 matcher"""
 matcher = ST_Matching(net=net)
 
 """step 3: 加载轨迹点集合，以打石一路为例"""
-traj = matcher.load_points("../input/traj_debug_dashiyilu_0.geojson")
-
-"""step 4: 开始匹配"""
-# 首次匹配耗时较久，因 sindex 需重构
-path, rList = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_scale=.01)
+traj = matcher.load_points("./data/trajs/traj_4.geojson")
+path, info = matcher.matching(traj, plot=True, top_k=5)
 ```
 
 ### 输入示例
@@ -72,7 +59,7 @@ path, rList = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_sc
 
 注:
 
-1. 示例输入对应`input/traj_0.geojson`，在`vscode`中可借助插件`Geo Data Viewer`可视化;
+1. 示例输入对应`./data/trajs/traj_0.geojson`，在`vscode`中可借助插件`Geo Data Viewer`可视化;
 2. 输入轨迹点的坐标系默认为 wgs84, gcj02的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`,
 
 ### 输出示例
@@ -99,9 +86,9 @@ path, rList = matcher.matching(traj, plot=True, top_k=3, dir_trans=True, plot_sc
 详见 requirement.txt, 建议`geopandas`使用conda安装
 
 ```bash
-conda create -n geo python=3.6
+conda create -n geo python=3.7
 conda activate geo
-conda install geopandas==0.8.1
+conda install geopandas==0.12.1
 ```
 
 ## Ref

@@ -6,10 +6,10 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
-from utils.timer import Timer, timeit
-from graph.geograph import GeoDigraph
-from match.candidatesGraph import construct_graph
-from geo.azimuth_helper import cal_linestring_azimuth_cos_dist
+from ..graph import GeoDigraph
+from .candidatesGraph import construct_graph
+
+from ..geo.azimuth_helper import cal_linestring_azimuth_cos_dist
 
 
 def merge_steps(gt):
@@ -62,15 +62,10 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
     # Add: f_dir
     assert geom in gt, "Check the geometry of gt"
 
-    def _cal_f_similarity(x):
-        if x[geom] is None:
-            return None
-        
-        f = cal_linestring_azimuth_cos_dist(x[geom], x['move_dir'], weight=True)
-
-        return f
+    def _cal_dir_similarity(x):
+        return cal_linestring_azimuth_cos_dist(x[geom], x['move_dir'], weight=True)
     
-    gt.loc[:, 'f_dir'] = gt.apply(_cal_f_similarity, axis=1)
+    gt.loc[:, 'f_dir'] = gt.apply(_cal_dir_similarity, axis=1)
     
     filtered_idxs = gt.query("flag == 1").index
     gt.loc[filtered_idxs, 'f_dir'] = 1
@@ -80,27 +75,8 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
 
 # @timeit
 def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000):
-    # # Add: w, v, path, geometry
-    # assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
-    # ods = gt[['dst', 'src']].drop_duplicates().values
-
-    # # TODO: 简化逻辑，因为是涉及到trim，同一层重复的可能性为 0
-    # if len(ods) > 0:
-    #     routes = []
-    #     for o, d in ods:
-    #         _r = net.search(o, d, max_steps=max_steps, max_dist=max_dist)
-    #         routes.append({'dst': o, 'src': d, **_r})
-            
-    #     df_planning = pd.DataFrame(routes)
-    #     gt = gt.merge(df_planning, on=['dst', 'src'], how='left')
-    #     # `w` is the shortest path from `ci-1` to `ci`
-    #     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
-    #     # distance transmission probability
-    #     gt.loc[:, 'v'] = gt.apply(lambda x: x.d_euc / x.w if x.d_euc < x.w else x.w / x.d_euc * 1.00, axis=1 )
-
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
-    assert gt.shape[0] > 0, "check the size of input dataframe"
 
     paths = gt.apply(lambda x:
                         net.search(x.dst, x.src, max_steps, max_dist),

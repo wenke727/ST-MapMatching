@@ -6,32 +6,29 @@ import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 
-from utils.timer import Timer
-from graph import GeoDigraph
-from geo.coord.coordTransfrom_shp import coord_transfer
-from geo.douglasPeucker import dp_compress_for_points as dp_compress
-from setting import DEBUG_FOLDER, DIS_FACTOR
+from .graph import GeoDigraph
+from .geo.coord.coordTransfrom_shp import coord_transfer
+from .geo.douglasPeucker import dp_compress_for_points as dp_compress
 
-from match.postprocess import get_path
-from osmnet.build_graph import build_geograph
-from match.candidatesGraph import construct_graph
-from match.spatialAnalysis import analyse_spatial_info
-from match.geometricAnalysis import analyse_geometric_info
-from match.viterbi import process_viterbi_pipeline, find_matched_sequence
-from match.visualization import matching_debug_level, plot_matching
+from .osmnet.build_graph import build_geograph
 
-from utils.timer import timeit
-from utils.logger_helper import make_logger
-from utils.serialization import save_checkpoint
+from .match.postprocess import get_path
+from .match.candidatesGraph import construct_graph
+from .match.spatialAnalysis import analyse_spatial_info
+from .match.geometricAnalysis import analyse_geometric_info
+from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
+from .match.visualization import matching_debug_level, plot_matching
 
-from setting import DATA_FOLDER
+from .utils.timer import Timer, timeit
+from .utils.logger_helper import make_logger
+from .utils.serialization import save_checkpoint
+
+from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 25)
-pd.set_option('display.width', 5000)        # 打印结果不换行方法
+pd.set_option('display.width', 5000)
 
-
-#%%
 
 class Trajectory:
     def __init__(self, dp_thres=5, crs_wgs=4326, crs_prj=900913, logger=None):
@@ -109,15 +106,15 @@ class Trajectory:
 
 
 class ST_Matching(Trajectory):
-    def __init__(self, 
-                 net:GeoDigraph, 
-                 dp_thres=5, 
-                 max_search_steps=2000, 
+    def __init__(self,
+                 net: GeoDigraph,
+                 dp_thres=5,
+                 max_search_steps=2000,
                  max_search_dist=10000,
                  top_k_candidates=5,
                  cand_search_radius=50,
-                 crs_wgs=4326, 
-                 crs_prj=900913, 
+                 crs_wgs=4326,
+                 crs_prj=900913,
                  ):
         self.crs_wgs        = crs_wgs
         self.crs_prj        = crs_prj
@@ -136,19 +133,16 @@ class ST_Matching(Trajectory):
         self.route_planning_max_search_dist = max_search_dist
 
 
-    def load_points(self, fn, compress=True, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
+    def load_points(self, fn, compress=True, dp_thres: int = None,
+                    crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
+        
         return self.traj_processor.load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
 
     @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, plot=True, save_fn=None, debug_in_levels=False,):
         top_k = top_k if top_k is not None else self.top_k_candidates
-        cands = analyse_geometric_info(points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius,
-                                       edge_keys=[], 
-                                       edge_attrs=['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
-                                       point_to_line_attrs=['len_0', 'len_1', 'seg_0', 'seg_1'], 
-                                       pid='pid', eid='eid', 
-                                       ll=True, crs_wgs=self.crs_wgs, crs_prj=self.crs_prj
-                                       )
+        cands = analyse_geometric_info(
+            points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
         
         # No matched
         if cands is None:
@@ -162,7 +156,7 @@ class ST_Matching(Trajectory):
 
         if not beam_search:
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
-            rList  = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
+            rList = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
         else:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
             _, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
@@ -213,11 +207,11 @@ class ST_Matching(Trajectory):
 
 #%%
 if __name__ == "__main__":
-    
-    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_9_pygeos.ckpt')
+    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_12_pygeos.ckpt')
     # net = build_geograph(ckpt='../cache/GBA_graph_9_pygeos.ckpt')
     self = ST_Matching(net=net)
     
-    traj = self.load_points(DATA_FOLDER / "trajs/traj_12.geojson")
-    path, info = self.matching(traj, plot=True, top_k=5, dir_trans=True, debug_in_levels=False)
+    traj = self.load_points(DATA_FOLDER / "trajs/traj_0.geojson")
+    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/data/tmp/trip_amp_hw_compressed.geojson")
+    path, info = self.matching(traj, plot=True, top_k=5)
     
