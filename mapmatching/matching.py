@@ -1,12 +1,15 @@
+
 #%%
 import os
 os.environ["USE_PYGEOS"] = "1"
 
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 
 from .graph import GeoDigraph
+from .geo.metric import lcss, edr, erp
 from .geo.coord.coordTransfrom_shp import coord_transfer
 from .geo.douglasPeucker import dp_compress_for_points as dp_compress
 
@@ -22,12 +25,10 @@ from .match.visualization import matching_debug_level, plot_matching
 from .utils.timer import Timer, timeit
 from .utils.logger_helper import make_logger
 from .utils.serialization import save_checkpoint
-
+from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 
-pd.set_option('display.max_columns', 50)
-pd.set_option('display.max_rows', 25)
-pd.set_option('display.width', 5000)
+SET_PANDAS_LOG_FORMET()
 
 
 class Trajectory:
@@ -39,7 +40,7 @@ class Trajectory:
         self.dp_thres = dp_thres
 
 
-    def load_points(self, fn, compress=True, dp_thres:int=None, crs:int=None, in_sys:str='wgs', out_sys:str='wgs'):
+    def load_points(self, fn, compress:bool=False, dp_thres:int=None, crs:int=None, in_sys:str='wgs', out_sys:str='wgs'):
         traj = gpd.read_file(fn, encoding='utf-8')
         if crs is not None:
             traj.set_crs(crs, allow_override=True , inplace=True)
@@ -49,7 +50,7 @@ class Trajectory:
         
         traj = coord_transfer(traj, in_sys, out_sys)
 
-        if compress is not None:
+        if compress:
             self.traj_bak = traj.copy()
             self.traj = traj = self._simplify(traj, dp_thres, inplace=True)
         else:
@@ -133,13 +134,53 @@ class ST_Matching(Trajectory):
         self.route_planning_max_search_dist = max_search_dist
 
 
-    def load_points(self, fn, compress=True, dp_thres: int = None,
+    def load_points(self, fn, compress=False, dp_thres: int = None,
                     crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
         
         return self.traj_processor.load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
 
+
+    def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):
+        """The algorithm (Douglas-Peucker) recursively splits the original line into smaller parts 
+        and connects these parts’ endpoints by a straight line. Then, it removes all points whose 
+        distance to the straight line is smaller than tolerance. It does not move any points and 
+        it always preserves endpoints of the original line or polygon.
+
+        Args:
+            points (gpd.GeoDataFrame): _description_
+            traj_thres (int, optional): The compression threshold(Unit: meter). Defaults to None.
+            inplace (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            gpd.GeoDataFrame: _description_
+        """
+        ori_size = points.shape[0]
+        if ori_size == 1:
+            return points
+        
+        tolerance = self.dp_thres if tolerance is None else tolerance
+        
+        points = points if inplace else points.copy()
+        points = dp_compress(points, dis_thred=tolerance)
+        
+        if ori_size == 2:
+            if points.iloc[0].geometry.distance(points.iloc[1].geometry) < 1e-4:
+                points = points.head(1)
+                self.logger.info(f"Trajectory only has one point or all the same points.")
+                return points
+      
+        self.logger.debug(f"Trajectory compression rate: {points.shape[0]/ori_size*100:.1f}% ({ori_size} -> {points.shape[0]})")
+        
+        return points
+
     @timeit
-    def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, plot=True, save_fn=None, debug_in_levels=False,):
+    def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, 
+                       simplify=True, tolerance=10, plot=True, save_fn=None, 
+                       debug_in_levels=False):
+        if simplify:
+            ori_traj = traj
+            traj = self._simplify(traj, tolerance=tolerance)
+
         top_k = top_k if top_k is not None else self.top_k_candidates
         cands = analyse_geometric_info(
             points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
@@ -180,6 +221,26 @@ class ST_Matching(Trajectory):
         
         return route, _dict
 
+
+    def eval(self, traj, path, eps=10, metric='lcss', g=None):
+        assert metric in ['lcss', 'edr', 'erp']
+        path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
+        traj_points = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
+        
+        # FIXME 是否使用 轨迹节点 和 投影节点 作比较
+        # projected_points = info['rList'][['pid', 'eid']].merge(info['cands'], on=['pid', 'eid'])
+        # points = np.concatenate(projected_points.point_geom.apply(lambda x: x.coords[:]).values)
+        # projections = np.concatenate(projected_points.projection.apply(lambda x: x).values).reshape((-1, 2))
+
+        eval_funs = {
+            'lcss': [lcss, (traj_points, path_points, eps)], 
+            'edr': [edr, (traj_points, path_points, eps)], 
+            'edp': [erp, (traj_points, path_points, g)]
+        }
+        _eval = eval_funs[metric]
+
+        return _eval[0](*_eval[1])
+
   
     """ debug helper """
     def matching_debug(self, traj, graph, debug_folder='../debug'):
@@ -207,7 +268,7 @@ class ST_Matching(Trajectory):
 
 #%%
 if __name__ == "__main__":
-    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_12_pygeos.ckpt')
+    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_pygeos.ckpt')
     # net = build_geograph(ckpt='../cache/GBA_graph_9_pygeos.ckpt')
     self = ST_Matching(net=net)
     

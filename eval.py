@@ -1,6 +1,7 @@
 import json
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 
 from mapmatching import ST_Matching, build_geograph
 from mapmatching.setting import DATA_FOLDER
@@ -40,9 +41,9 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
         
     for fn in tqdm(trajs):
         name = fn.name
-        traj = matcher.load_points(fn)
+        traj = matcher.load_points(fn, compress=False)
         path, i = matcher.matching(traj, plot=False, top_k=5, dir_trans=True, 
-                                debug_in_levels=False, save_fn = debug_folder / str(name).replace('geojson', 'jpg'))
+                                   debug_in_levels=False, save_fn = debug_folder / str(name).replace('geojson', 'jpg'))
         y = path.eid.values
         # preds[fn.name] = [int(i) for i in y]
 
@@ -61,9 +62,9 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
 if __name__ == "__main__":
     trajs_folder = DATA_FOLDER / "trajs"
 
-    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_9_pygeos.ckpt')
+    net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_pygeos.ckpt')
     matcher = ST_Matching(net=net)
 
-    evaluation(matcher, trajs_folder)
+    evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
 
 

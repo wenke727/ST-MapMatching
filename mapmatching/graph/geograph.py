@@ -124,23 +124,19 @@ class GeoDigraph(Digraph):
            
 
     """ io """
-    def to_postgis(self, name):
-        try:
-            from utils.db import gdf_to_postgis
-            df_node_with_degree = self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
-            
-            gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
-            gdf_to_postgis(df_node_with_degree, f'topo_osm_{name}_endpoint')
-            
-            self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
-            self.df_nodes = self.df_nodes[['nid', 'x', 'y', 'traffic_signals', 'geometry']]
-            gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
-            return True
-        except:
-            if self.logger is not None:
-                self.logger.error('upload data error.')
+    def to_postgis(self, name, nodes_attrs=['nid', 'x', 'y', 'traffic_signals', 'geometry']):
+        from ..utils.db import gdf_to_postgis
+        df_node_with_degree = self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
         
-        return False
+        gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
+        gdf_to_postgis(df_node_with_degree, f'topo_osm_{name}_endpoint')
+        
+        self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
+        nodes_attrs = [i for i in nodes_attrs if i in list(self.df_nodes) ]
+        self.df_nodes = self.df_nodes[nodes_attrs]
+        gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
+
+        return True
 
 
     def to_csv(self, name, folder = None):
@@ -170,7 +166,12 @@ class GeoDigraph(Digraph):
 
 
     def load_checkpoint(self, ckpt):
-        return load_checkpoint(ckpt, self)
+        from loguru import logger
+        
+        load_checkpoint(ckpt, self)
+        self.logger = logger
+
+        return self
 
 
 if __name__ == "__main__":

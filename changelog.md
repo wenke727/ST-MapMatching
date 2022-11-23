@@ -3,10 +3,25 @@
 ## [Unreleased]
 
 - [x] 聚光搜索
-- [ ] 匹配异常记录
 - [x] 自动化测试脚本，包括`性能`和`精度`
-- [ ] 双向 A* 最短路算法
+- [x] lcss 轨迹相似度评估函数
+- [ ] 匹配异常 log
+- [ ] 双向 A* 最短路算法，需要反向道路
+- [ ] ALT 算法
 
+## [V1.2.4] - 2022-11-23
+
+### Added
+
+- `ST_Matching` 模块的新增 `_simplify`，`eval`函数
+- 增加`metric`模块，计算轨迹间的相似度，目前包括：lcss，edr， erp
+- `project_point_to_polyline` 增加 `projection point` 属性
+- `haversine_matrix `增加 `cal_haversine_matrix` 矢量化计算距离矩阵
+- `build_geograph` 新增支持上传至 数据库 
+
+### Deprecated
+
+- 原 `haversine_np`弃用，因最新版本的 haversine 内置 haversine_vector
 
 ## [V1.2.3] - 2022-11-20
 

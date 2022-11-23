@@ -1,16 +1,16 @@
 import numpy as np
 import pandas as pd
+from haversine import haversine_vector, Unit
 
 from ..utils import timeit
 from ..geo.azimuth_helper import azimuthAngle_np
-from ..geo.haversine import haversine_np, Unit
 
 
 def _cal_traj_params(points, move_dir=True):
     coords = points.geometry.apply(lambda x: [x.x, x.y]).values.tolist()
     coords = np.array(coords)
 
-    dist = haversine_np(coords[:-1], coords[1:], xy=True, unit=Unit.METERS)
+    dist = haversine_vector(coords[:-1, ::-1], coords[1:, ::-1], unit=Unit.METERS)
     idxs = points.index
     _dict = {'pid_0': idxs[:-1],
              'pid_1':idxs[1:],

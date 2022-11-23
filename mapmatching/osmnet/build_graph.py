@@ -14,16 +14,21 @@ def load_geograph(ckpt):
     return graph
 
 
-def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, *args, **kwargs):
+def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_db=False, *args, **kwargs):
     if ckpt:
         return load_geograph(ckpt)
 
-    download_osm_xml(xml_fn, bbox, False)
+    if not os.path.exists(xml_fn):
+        download_osm_xml(xml_fn, bbox, False)
+    
     df_nodes, df_edges, df_ways = parse_xml_to_graph(xml_fn, *args, **kwargs)
     
     attrs = ['highway', 'name', 'maxspeed', 'oneway', 'lanes']
     if way_info: 
         df_edges = df_edges.merge(df_ways[attrs], left_on='way_id', right_index=True)
+        df_edges.rename(columns={'highway':'road_type'}, inplace=True)
+    
+
     graph = GeoDigraph(df_edges, df_nodes)
     
     return graph
@@ -31,19 +36,16 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, *args, **kw
 
 if __name__ == "__main__":
     # new graph
-    name = 'Shenzhen'
+    name = 'GBA'
     graph = build_geograph(xml_fn = f"../../data/network/{name}.osm.xml")
-    graph.save_checkpoint(f'../../data/network/{name}_graph_12_pygeos.ckpt')
+    graph.save_checkpoint(f'../../data/network/{name}_graph_pygeos.ckpt')
     
     # load ckpt
-    graph = build_geograph(ckpt=f'../../data/network/{name}_graph_12_pygeos.ckpt')
+    graph = build_geograph(ckpt=f'../../data/network/{name}_graph_pygeos.ckpt')
     
     # check
     path = graph.search(src=7959990710, dst=499265789)
     graph.get_edge(path['path']).plot()
 
     # save to DB
-    # from utils.db import gdf_to_postgis
-    # gdf_to_postgis(graph.df_edges.rename(columns={'highway': 'road_type'}), f'topo_osm_{name}_edge')
-    # gdf_to_postgis(graph.df_nodes, f'topo_osm_{name}_node')
-    
+    # graph.to_postgis(name)

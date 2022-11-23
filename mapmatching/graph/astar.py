@@ -37,6 +37,19 @@ def _reconstruct_path(dst, came_from):
     return route[::-1]
 
 
+def check_od(graph, src, dst, level='debug'):
+    if src in graph and dst in graph:
+        return True, None
+
+    info = f"Trip ({src}, {dst})" + \
+        f"{', `src` not in graph' if src not in graph else ', '}" + \
+        f"{', `dst` not in graph' if dst not in graph else ''}"
+    
+    getattr(logger, level)(info)
+    
+    return False, {"status": 1, 'waypoints': [], 'cost': np.inf} 
+
+
 def a_star(graph: dict,
            nodes: dict,
            src: int,
@@ -66,20 +79,17 @@ def a_star(graph: dict,
         res = search_memo[(src, dst)]
         return res
     
-    if src not in graph or dst not in graph:
-        info = f"Trip ({src}, {dst})" + \
-            f"{', `src` not in graph' if src not in graph else ', '}" + \
-            f"{', `dst` not in graph' if dst not in graph else ''}"
-        
-        getattr(logger, level)(info)
-        
-        return {"status": 1, 'waypoints': [], 'cost': np.inf} 
+    status, info = check_od(graph, src, dst, level)
+    if not status:
+        return info
 
+    # init
     queue = [(0, src)]
     came_from = {src: None}
     distance = {src: 0}
     step_counter = 0
 
+    # searching
     while queue:
         _, cur = heapq.heappop(queue)
         if cur == dst or step_counter > max_steps:
@@ -90,14 +100,16 @@ def a_star(graph: dict,
                 continue
             
             new_cost = distance[cur] + cost
-            if nxt not in distance or new_cost < distance[nxt]:
-                distance[nxt] = new_cost
-                if distance[nxt] > max_dist:
-                    continue
-                
-                _h = calculate_nodes_dist(nodes, dst, nxt, nodes_dist_memo)
-                heapq.heappush(queue, (new_cost + _h, nxt) )
-                came_from[nxt] = cur
+            if nxt in distance and new_cost >= distance[nxt]:
+                continue
+
+            distance[nxt] = new_cost
+            if distance[nxt] > max_dist:
+                continue
+            
+            _h = calculate_nodes_dist(nodes, dst, nxt, nodes_dist_memo)
+            heapq.heappush(queue, (new_cost + _h, nxt) )
+            came_from[nxt] = cur
         step_counter += 1
 
     # abnormal situation

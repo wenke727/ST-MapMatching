@@ -48,7 +48,6 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
                                 .head(1).reset_index()
         
         # post-process
-        
         prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
         new_path = _df[['eid_1', "eid_0"]]\
                         .set_index("eid_1")\

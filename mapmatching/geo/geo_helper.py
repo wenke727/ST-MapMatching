@@ -1,10 +1,8 @@
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-from haversine import haversine, Unit
 from shapely.geometry import Point, LineString
-
-from .haversine import haversine, haversine_np, Unit
+from haversine import haversine, haversine_vector, Unit
 
 
 def geom_buffer(df:gpd.GeoDataFrame, by, buffer_dis=100, att='buffer_', crs_wgs=4326, crs_prj=900913):
@@ -199,7 +197,10 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
     
     foots = np.vstack([factors * pqx + lines[:, 0, 0], 
                        factors * pqy + lines[:, 0, 1]]).T
-    line_length = haversine_np(coords[:-1], coords[1:], xy=True, unit=Unit.METERS) if coord_sys else np.sqrt(d)
+    if coord_sys:
+        line_length = haversine_vector(coords[:-1, ::-1], coords[1:, ::-1], unit=Unit.METERS)  
+    else:
+        line_length = np.sqrt(d)
     
     dist_lst = _cal_dist(point, lines, foots, factors)
     split_idx = np.argmin(dist_lst)
@@ -238,7 +239,8 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
         'dist_lst': dist_lst, 
         'line_length': line_length,
         'split_idx': split_idx,
-        'distance': dist_lst[split_idx], # 点到多折线的距离
+        'projection': foots[split_idx], # projection point
+        'distance': dist_lst[split_idx], # dist bet `point` to `projection point`
         'seg_0': seg_0,
         'seg_1': seg_1,
         'len_0': len_0,

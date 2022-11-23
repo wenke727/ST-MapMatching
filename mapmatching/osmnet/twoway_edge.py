@@ -29,7 +29,7 @@ def add_reverse_edge(df_edges, df_ways, od_attrs=['src', 'dst'], offset=True):
     df_edge_rev.loc[:, 'waypoints'] = df_edge_rev.waypoints.apply(lambda x: x[::-1])
     df_edge_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
 
-    df_edges = df_edges.append(df_edge_rev).reset_index(drop=True)
+    df_edges = pd.concat([df_edges, df_edge_rev]).reset_index(drop=True)
 
     if offset:
         df_edges = _edge_offset(df_edges)
