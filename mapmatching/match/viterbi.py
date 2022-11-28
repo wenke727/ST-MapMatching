@@ -28,10 +28,9 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     times = []
     timer = Timer()
     
-    for idx, t in enumerate(layer_ids[:-1]):
-        df_layer = gt.query(f"pid_0 == @t and eid_0 in @prev_states")
-        prev_probs = np.array([f_score[-1][i]
-                              for i in df_layer.index.get_level_values(1)])
+    for idx, lvl in enumerate(layer_ids[:-1]):
+        df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
+        prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
 
         timer.start()
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
@@ -47,10 +46,13 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
                                 .groupby('eid_1')\
                                 .head(1).reset_index()
         
+        # FIXME 中断       
+        if _df.shape[0] == 0:
+            continue
+
         # post-process
         prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
-        new_path = _df[['eid_1', "eid_0"]]\
-                        .set_index("eid_1")\
+        new_path = _df[['eid_1', "eid_0"]].set_index("eid_1")\
                         .apply(lambda x: path[x.eid_0] + [(layer_ids[idx+1], x.name)], axis=1)\
                         .to_dict()
         

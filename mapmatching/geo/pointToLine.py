@@ -5,48 +5,6 @@ from shapely.geometry import Point, LineString
 from haversine import haversine, haversine_vector, Unit
 
 
-def geom_buffer(df:gpd.GeoDataFrame, by, buffer_dis=100, att='buffer_', crs_wgs=4326, crs_prj=900913):
-    df.loc[:, att] = df.to_crs(epsg=crs_prj).buffer(buffer_dis).to_crs(epsg=crs_wgs)
-    df.set_geometry(att, inplace=True)
-    
-    whole_geom = df.dissolve(by=by).iloc[0][att]
-    
-    return df, whole_geom
-
-
-"""" Point helper """
-def coords_pair_dist(o, d, xy=True):
-    if isinstance(o, Point) and isinstance(d, Point):
-        return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
-    
-    if (isinstance(o, tuple) and isinstance(d, tuple)) or \
-       (isinstance(o, list) and isinstance(d, list)):
-        if xy:
-            return haversine(o[:2][::-1], d[:2][::-1], unit=Unit.METERS)
-        else:
-            return haversine(o[:2], d[:2], unit=Unit.METERS)
-    
-    return np.inf
-
-
-""" convert helper """
-def geom_lst_to_gdf(lst):
-    """Convert geometry or geometry list to gdf.
-
-    Args:
-        lst (geometry|list(geometry)): The geometry or geometries.
-
-    Returns:
-        gpd.GeoDataFrame: The geodataframe.
-    """
-    
-    if not isinstance(lst, list):
-        lst = [lst]
-        
-    return gpd.GeoDataFrame( {'geometry':lst} )
-
-
-""" Point & LineString helper """
 def get_foot_point(point, line_p1, line_p2):
     """
     @point, line_p1, line_p2 : [x, y, z]
@@ -91,14 +49,12 @@ def relation_bet_point_and_line( point, line ):
     dx  = point[0]- line[0]
     dy  = point[1]- line[1]
     
-    # 线段长度的平方
-    d = pow(pqx,2) + pow(pqy,2) 
-    # 向量 点积 pq 向量（p相当于A点，q相当于B点，pt相当于P点）
-    t = pqx*dx + pqy*dy
+    d = pow(pqx, 2) + pow(pqy, 2) 
+    t = pqx * dx + pqy * dy
 
     flag = 1
-    if(d>0): 
-        t = t/d
+    if(d > 0): 
+        t = t / d
         flag = t
 
     return flag
@@ -127,18 +83,20 @@ def cal_foot_point_on_polyline( point: Point, line: LineString, foot=True, ratio
 
 
 def get_vertical_dist(pointX, pointA, pointB):
-    a = coords_pair_dist(pointA, pointB, xy=True)
+    a, b, c = haversine_vector(
+        np.array([pointA, pointA, pointB])[:, ::-1],
+        np.array([pointB, pointX, pointX])[:, ::-1],
+        unit=Unit.METERS
+    )
 
     #当弦两端重合时,点到弦的距离变为点间距离
     if a==0:
-        return coords_pair_dist(pointA,pointX)
+        return b
 
-    b = coords_pair_dist(pointA, pointX, xy=True)
-    c = coords_pair_dist(pointB, pointX, xy=True)
-    p = (a+b+c)/2
+    p = (a + b + c) / 2
     S = np.sqrt(np.abs(p*(p-a)*(p-b)*(p-c)))
     
-    vertical_dist = S*2/a
+    vertical_dist = S * 2 / a
 
     return vertical_dist
 
@@ -287,33 +245,4 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     res['seg_1'] = tmp.loc[1].coords[:]
     
     return res
-
-
-""" Linstring helper """
-def linestring_length(df:gpd.GeoDataFrame, add_to_att=False, key='length'):
-    """caculate the length of LineString
-    @return: pd:Series, length
-    """
-    # """" caculate the length of road segment  """
-    # DB_roads.loc[:, 'length'] = DB_roads.to_crs('epsg:3395').length
-    if df.crs is None:
-        df.set_crs(epsg=4326, inplace=True)
-    dis =  df.to_crs('epsg:3395').length
-    
-    if add_to_att:
-        df.loc[:, key] = dis
-        return
-    
-    return dis
-
-
-""" Distance helper """
-def geom_series_distance(col1, col2, in_crs=4326, out_crs=900913):
-    if isinstance(col1, pd.Series):
-        a = gpd.GeoSeries(col1).set_crs(in_crs, allow_override=True).to_crs(out_crs)
-    if isinstance(col2, pd.Series):
-        b = gpd.GeoSeries(col2).set_crs(in_crs, allow_override=True).to_crs(out_crs)
-    
-    assert isinstance(a, gpd.GeoSeries) and isinstance(b, gpd.GeoSeries)
-    return a.distance(b)
 

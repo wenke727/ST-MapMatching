@@ -2,7 +2,7 @@
 
 import numpy as np
 from haversine import haversine_vector, Unit
-from ..haversine_matrix import cal_haversine_matrix
+from ..haversineDistance import cal_haversine_matrix
 
 
 def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):

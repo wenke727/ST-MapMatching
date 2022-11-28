@@ -9,7 +9,7 @@ from shapely.geometry import LineString
 from ..graph import GeoDigraph
 from .candidatesGraph import construct_graph
 
-from ..geo.azimuth_helper import cal_linestring_azimuth_cos_dist
+from ..geo.azimuth import cal_linestring_azimuth_cos_dist
 
 
 def merge_steps(gt):

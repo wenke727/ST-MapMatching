@@ -3,22 +3,22 @@ import pandas as pd
 from haversine import haversine_vector, Unit
 
 from ..utils import timeit
-from ..geo.azimuth_helper import azimuthAngle_np
+from ..geo.azimuth import azimuthAngle_vector
 
 
 def _cal_traj_params(points, move_dir=True):
-    coords = points.geometry.apply(lambda x: [x.x, x.y]).values.tolist()
+    coords = points.geometry.apply(lambda x: [x.y, x.x]).values.tolist()
     coords = np.array(coords)
 
-    dist = haversine_vector(coords[:-1, ::-1], coords[1:, ::-1], unit=Unit.METERS)
+    dist = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
     idxs = points.index
     _dict = {'pid_0': idxs[:-1],
              'pid_1':idxs[1:],
              'd_euc': dist}
 
     if move_dir:
-        dirs = azimuthAngle_np(coords[:-1][:,0], coords[:-1][:,1], 
-                               coords[1:][:,0], coords[1:][:,1])
+        dirs = azimuthAngle_vector(coords[:-1, 1], coords[:-1, 0], 
+                                   coords[1: , 1], coords[1:, 0])
         _dict['move_dir'] = dirs
     
     res = pd.DataFrame(_dict)
@@ -44,7 +44,6 @@ def _identify_edge_flag(gt):
     return gt
 
 
-@timeit
 def construct_graph( points,
                      cands,
                      common_attrs=['pid', 'eid'],
@@ -87,6 +86,7 @@ def construct_graph( points,
     # the current strategy is to ignore it, and there is a problem of order
     traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
+    gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
     if gt_keys:
         gt.set_index(gt_keys, inplace=True)
     

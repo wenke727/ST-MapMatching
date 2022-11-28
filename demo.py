@@ -23,3 +23,5 @@ traj = matcher.load_points("./data/trajs/traj_4.geojson")
 path, info = matcher.matching(traj, plot=True, top_k=5)
 
 matcher.eval(traj, path, 20)
+
+matcher.project(traj, path)

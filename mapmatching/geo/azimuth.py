@@ -1,22 +1,9 @@
 import math
 import numpy as np
 from shapely import wkt
-from haversine import haversine, Unit
+from haversine import haversine, haversine_vector, Unit
 from shapely.geometry import Point, LineString
-
-
-def coords_pair_dist(o, d, xy=True):
-    if isinstance(o, Point) and isinstance(d, Point):
-        return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
-    
-    if (isinstance(o, tuple) and isinstance(d, tuple)) or \
-       (isinstance(o, list) and isinstance(d, list)):
-        if xy:
-            return haversine(o[:2][::-1], d[:2][::-1], unit=Unit.METERS)
-        else:
-            return haversine(o[:2], d[:2], unit=Unit.METERS)
-    
-    return np.inf
+from .haversineDistance import coords_pair_dist
 
 
 def azimuth_diff(a, b, unit='radian'):
@@ -35,7 +22,7 @@ def azimuth_diff(a, b, unit='radian'):
         diff[diff > 180] = 360 - diff[diff > 180]
     else:
         if diff > 180:
-            diff = 360-diff
+            diff = 360 - diff
 
     return diff if unit =='degree' else diff * math.pi / 180
 
@@ -79,7 +66,7 @@ def azimuthAngle(x1, y1, x2, y2):
     return angle * 180 / math.pi
 
 
-def azimuthAngle_np(x1, y1, x2, y2):
+def azimuthAngle_vector(x1, y1, x2, y2):
     angle = 0
     dx = x2 - x1
     dy = y2 - y1
@@ -132,7 +119,6 @@ def azimuth_cos_similarity(angel_0:float, angel_1:float, normal=False):
     return res
     
 
-
 def azimuth_cos_distance(angel_0:float, angel_1:float):
     """Calculate the `cosine distance` bewteen `angel_0` and `angel_1`.
 
@@ -157,10 +143,12 @@ def cal_polyline_azimuth(geom):
         [list]: The list of azimuth(unit: degree).
     """
     if isinstance(geom, LineString):
-        coords = geom.coords[:]
-    if isinstance(geom, list):
+        coords = np.array(geom.coords)
+    if isinstance(geom, (list, np.ndarray)):
         coords = geom
-    seg_angels = np.array([azimuthAngle( *coords[i], *coords[i+1] ) for i in range(len(coords)-1) ])
+
+    seg_angels = azimuthAngle_vector(coords[:-1, 0], coords[:-1, 1], 
+                                     coords[1:, 0], coords[1:, 1])
 
     return seg_angels
 
@@ -190,9 +178,9 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
         return None
     
     if isinstance(geom, LineString):
-        coords = geom.coords[:]
+        coords = np.array(geom.coords)
     elif isinstance(geom, list):
-        coords = geom
+        coords = np.array(geom)
     else:    
         assert False, print(type(geom), geom)
     
@@ -205,12 +193,14 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if not weight:
         val = np.mean(lst)
     else:
-        weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 
+        # weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 
+        coords = coords[:, ::-1]
+        weights = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
         val = np.average(lst, weights=weights)
     
     return val
+
     
-#%%
 if __name__ == '__main__':
     p0 = wkt.loads('POINT (113.934151 22.577512)')
     p1 = wkt.loads('POINT (113.934144 22.577979)')

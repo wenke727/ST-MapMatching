@@ -7,20 +7,22 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
+from shapely.geometry import Point
 
 from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
-from .geo.coord.coordTransfrom_shp import coord_transfer
-from .geo.douglasPeucker import dp_compress_for_points as dp_compress
+from .geo.douglasPeucker import simplify_trajetory_points
 
 from .osmnet.build_graph import build_geograph
 
+from .match.io import load_points
 from .match.postprocess import get_path
 from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
 from .match.visualization import matching_debug_level, plot_matching
+from .match.projection import project_traj_points_to_network
 
 from .utils.timer import Timer, timeit
 from .utils.logger_helper import make_logger
@@ -31,82 +33,7 @@ from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 SET_PANDAS_LOG_FORMET()
 
 
-class Trajectory:
-    def __init__(self, dp_thres=5, crs_wgs=4326, crs_prj=900913, logger=None):
-        self.crs_wgs  = crs_wgs
-        self.crs_prj  = crs_prj
-        self.traj     = None
-        self.logger   = make_logger('../log', console=True) if logger is None else logger
-        self.dp_thres = dp_thres
-
-
-    def load_points(self, fn, compress:bool=False, dp_thres:int=None, crs:int=None, in_sys:str='wgs', out_sys:str='wgs'):
-        traj = gpd.read_file(fn, encoding='utf-8')
-        if crs is not None:
-            traj.set_crs(crs, allow_override=True , inplace=True)
-
-        if 'time' in traj.columns:
-            traj.time = pd.to_datetime(traj['time'], format='%Y-%m-%d %H:%M:%S')
-        
-        traj = coord_transfer(traj, in_sys, out_sys)
-
-        if compress:
-            self.traj_bak = traj.copy()
-            self.traj = traj = self._simplify(traj, dp_thres, inplace=True)
-        else:
-            self.traj_bak = None
-            self.traj = traj
-        
-        return traj
-
-
-    def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):
-        """The algorithm (Douglas-Peucker) recursively splits the original line into smaller parts 
-        and connects these parts’ endpoints by a straight line. Then, it removes all points whose 
-        distance to the straight line is smaller than tolerance. It does not move any points and 
-        it always preserves endpoints of the original line or polygon.
-
-        Args:
-            points (gpd.GeoDataFrame): _description_
-            traj_thres (int, optional): The compression threshold(Unit: meter). Defaults to None.
-            inplace (bool, optional): _description_. Defaults to False.
-
-        Returns:
-            gpd.GeoDataFrame: _description_
-        """
-        ori_size = points.shape[0]
-        if ori_size == 1:
-            return points
-        
-        tolerance = self.dp_thres if tolerance is None else tolerance
-        
-        points = points if inplace else points.copy()
-        points = dp_compress(points, dis_thred=tolerance)
-        
-        if ori_size == 2:
-            if points.iloc[0].geometry.distance(points.iloc[1].geometry) < 1e-4:
-                points = points.head(1)
-                self.logger.info(f"Trajectory only has one point or all the same points.")
-                return points
-      
-        self.logger.debug(f"Trajectory compression rate: {points.shape[0]/ori_size*100:.1f}% ({ori_size} -> {points.shape[0]})")
-        
-        return points
-    
-
-    def get_points(self, traj, ids):
-        return NotImplementedError
-    
-    
-    def points_to_polyline(self, points):
-        return NotImplementedError
-
-
-    def polyline_to_points(self, polyline):
-        return NotImplementedError
-
-
-class ST_Matching(Trajectory):
+class ST_Matching():
     def __init__(self,
                  net: GeoDigraph,
                  dp_thres=5,
@@ -117,13 +44,13 @@ class ST_Matching(Trajectory):
                  crs_wgs=4326,
                  crs_prj=900913,
                  ):
-        self.crs_wgs        = crs_wgs
-        self.crs_prj        = crs_prj
-        self.logger         = make_logger('../log', console=False, level="INFO")
-        self.traj_processor = Trajectory(dp_thres, crs_wgs, crs_prj, self.logger)
-        self.net            = net
-        self.dis_factor     = DIS_FACTOR
-        self.debug_folder   = DEBUG_FOLDER
+        self.net = net
+        self.dp_thres = dp_thres
+        self.crs_wgs = crs_wgs
+        self.crs_wgs = crs_wgs
+        self.dis_factor = DIS_FACTOR
+        self.debug_folder = DEBUG_FOLDER
+        self.logger = make_logger('../log', console=False, level="INFO")
         if not os.path.exists(self.debug_folder):
             os.makedirs(self.debug_folder)
 
@@ -133,52 +60,14 @@ class ST_Matching(Trajectory):
         self.route_planning_max_search_steps = max_search_steps
         self.route_planning_max_search_dist = max_search_dist
 
-
-    def load_points(self, fn, compress=False, dp_thres: int = None,
-                    crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
-        
-        return self.traj_processor.load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
-
-
-    def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):
-        """The algorithm (Douglas-Peucker) recursively splits the original line into smaller parts 
-        and connects these parts’ endpoints by a straight line. Then, it removes all points whose 
-        distance to the straight line is smaller than tolerance. It does not move any points and 
-        it always preserves endpoints of the original line or polygon.
-
-        Args:
-            points (gpd.GeoDataFrame): _description_
-            traj_thres (int, optional): The compression threshold(Unit: meter). Defaults to None.
-            inplace (bool, optional): _description_. Defaults to False.
-
-        Returns:
-            gpd.GeoDataFrame: _description_
-        """
-        ori_size = points.shape[0]
-        if ori_size == 1:
-            return points
-        
-        tolerance = self.dp_thres if tolerance is None else tolerance
-        
-        points = points if inplace else points.copy()
-        points = dp_compress(points, dis_thred=tolerance)
-        
-        if ori_size == 2:
-            if points.iloc[0].geometry.distance(points.iloc[1].geometry) < 1e-4:
-                points = points.head(1)
-                self.logger.info(f"Trajectory only has one point or all the same points.")
-                return points
-      
-        self.logger.debug(f"Trajectory compression rate: {points.shape[0]/ori_size*100:.1f}% ({ori_size} -> {points.shape[0]})")
-        
-        return points
-
     @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, 
                        simplify=True, tolerance=10, plot=True, save_fn=None, 
                        debug_in_levels=False):
+        # tolerance: 10 meters
         if simplify:
             ori_traj = traj
+            traj = traj.copy()
             traj = self._simplify(traj, tolerance=tolerance)
 
         top_k = top_k if top_k is not None else self.top_k_candidates
@@ -191,8 +80,10 @@ class ST_Matching(Trajectory):
         
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
+            # TODO: 提取线形
             eid = cands.sort_values('dist_p2c').head(1).eid.values
             route = self.net.get_edge(eid, reset_index=True)
+            route.loc[:, 'geometry'] = Point(*cands.iloc[0].projection)
             return route, None
 
         if not beam_search:
@@ -221,7 +112,6 @@ class ST_Matching(Trajectory):
         
         return route, _dict
 
-
     def eval(self, traj, path, eps=10, metric='lcss', g=None):
         assert metric in ['lcss', 'edr', 'erp']
         path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
@@ -241,8 +131,19 @@ class ST_Matching(Trajectory):
 
         return _eval[0](*_eval[1])
 
-  
-    """ debug helper """
+    def project(self, traj_panos, path, keep_attrs=None):
+        return project_traj_points_to_network(traj_panos, path, self.net, keep_attrs)
+
+    def load_points(self, fn, compress=False, dp_thres: int = None,
+                    crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
+        
+        traj, _ = load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
+        
+        return traj
+
+    def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
+        return simplify_trajetory_points(points, tolerance, inplace=True, logger=self.logger)
+
     def matching_debug(self, traj, graph, debug_folder='../debug'):
         """matching debug
 
@@ -264,15 +165,21 @@ class ST_Matching(Trajectory):
         
         return
 
+    def get_points(self, traj, ids):
+        return NotImplementedError
+    
+    def points_to_polyline(self, points):
+        return NotImplementedError
+
+    def polyline_to_points(self, polyline):
+        return NotImplementedError
 
 
 #%%
 if __name__ == "__main__":
     net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_pygeos.ckpt')
-    # net = build_geograph(ckpt='../cache/GBA_graph_9_pygeos.ckpt')
     self = ST_Matching(net=net)
     
     traj = self.load_points(DATA_FOLDER / "trajs/traj_0.geojson")
-    # traj = self.load_points("/home/pcl/codes/ST-MapMatching/data/tmp/trip_amp_hw_compressed.geojson")
     path, info = self.matching(traj, plot=True, top_k=5)
     

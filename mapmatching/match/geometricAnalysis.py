@@ -5,7 +5,8 @@ from loguru import logger
 from shapely.geometry import box
 
 from ..utils import timeit
-from ..geo.geo_helper import geom_series_distance, project_point_to_polyline
+from ..geo.misc import geom_series_distance
+from ..geo.pointToLine import project_point_to_polyline
 
 import warnings
 warnings.filterwarnings('ignore')

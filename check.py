@@ -11,15 +11,18 @@ matcher = ST_Matching(net=net)
 # traj = matcher.load_points("../LRNC/debug/异常记录/17_770724-d008-13c6-ee9e-f77910.geojson", compress=False)
 
 
-traj = matcher.load_points("../LRNC/debug/异常记录/26_1060a0-7213-367b-e6b8-17e7e4.geojson", compress=False)
-# traj = matcher.load_points("../LRNC/debug/异常记录/29_72437e-5c06-ba42-fc8b-f15dbf.geojson", compress=False)
-# traj = matcher.load_points("../LRNC/debug/异常记录/38_69cc38-49a2-3ff2-527b-f796b5.geojson", compress=False)
-# traj = matcher.load_points("../LRNC/debug/异常记录/39_ba4ee2-bce1-b948-0271-5e80f1.geojson", compress=False)
+# traj = matcher.load_points("../LRNC/debug/24_17a311-19b4-5bfb-1ff9-0cadf6.geojson", compress=False)
+traj = matcher.load_points("../LRNC/debug/28_1060a0-7213-367b-e6b8-17e7e4.geojson", compress=False)
+# traj = matcher.load_points("../LRNC/debug/44_114065-9768-b039-602a-fc48a0.geojson", compress=False)
+# traj = matcher.load_points("../LRNC/debug/45_5ccdd0-494a-be1a-b9f4-2310f0.geojson", compress=False)
+# traj = matcher.load_points("../LRNC/debug/47_58405e-e7f3-703f-4b9e-9d683d.geojson", compress=False)
+
+traj = matcher.load_points("./data/tmp/trip_amp_hw_compressed.geojson", compress=False)
 
 path, info = matcher.matching(traj, plot=False, top_k=5)
 fig, ax = plot_geodata(traj, reset_extent=False)
 path.plot(ax=ax, color='r')
 
-matcher.eval(traj, path, 100, 'lcss')
+# matcher.eval(traj, path, 10, 'lcss')
 
 # %%

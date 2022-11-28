@@ -10,6 +10,7 @@ from ..setting import DATA_FOLDER
 def load_geograph(ckpt):
     graph = GeoDigraph()
     graph.load_checkpoint(ckpt)
+    graph.init_searcher()
 
     return graph
 

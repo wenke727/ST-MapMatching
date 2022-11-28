@@ -66,5 +66,7 @@ if __name__ == "__main__":
     matcher = ST_Matching(net=net)
 
     evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
+    
+    net.search_memo.keys()
 
 

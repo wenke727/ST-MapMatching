@@ -5,9 +5,21 @@
 - [x] 聚光搜索
 - [x] 自动化测试脚本，包括`性能`和`精度`
 - [x] lcss 轨迹相似度评估函数
+- [x] 双向 A* 最短路算法，需要反向道路
 - [ ] 匹配异常 log
-- [ ] 双向 A* 最短路算法，需要反向道路
 - [ ] ALT 算法
+
+## [V1.2.5] - 2022-11-28
+
+### Added
+
+- ST_Matching
+  -  `project_traj_points_to_network`
+  - load_traj
+
+### Changed
+
+- Astar 最短路算法 封装成类
 
 ## [V1.2.4] - 2022-11-23
 
@@ -304,7 +316,7 @@
 
 ### Added
 
-- `azimuth_helper.py`
+- `azimuth.py`
   - azimuth_cos_similarity_for_linestring(geom, dir, weight=True)
 
 ### Changed

@@ -5,7 +5,7 @@ from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
 from .base import Digraph
-from .astar import a_star
+from .astar import Astar
 from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
@@ -15,21 +15,26 @@ class GeoDigraph(Digraph):
         self.df_nodes = df_nodes
         self.search_memo = {}
         self.nodes_dist_memo = {}
-        
-        if df_edges is not None and df_nodes is not None:
-            super().__init__(df_edges[['src', 'dst', 'dist']].values, df_nodes.to_dict(orient='index'), *args, **kwargs)
-        
 
+        if df_edges is not None and df_nodes is not None:
+            super().__init__(df_edges[['src', 'dst', 'dist']].values, 
+                             df_nodes.to_dict(orient='index'), *args, **kwargs)
+            self.init_searcher()
+
+    def init_searcher(self):
+        # self.searcher = BiAStar(self.graph, self.graph_r, self.nodes,
+        #                         search_memo=self.search_memo,
+        #                         nodes_dist_memo=self.nodes_dist_memo
+        #                         )
+        
+        self.searcher = Astar(self.graph, self.nodes, 
+                              search_memo=self.search_memo, 
+                              nodes_dist_memo=self.nodes_dist_memo,
+                              max_steps=2000, max_dist=10000)
+
+        
     def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):
-        route = a_star(graph=self.graph,
-                       nodes=self.nodes,
-                       src=src,
-                       dst=dst,
-                       search_memo=self.search_memo,
-                       nodes_dist_memo=self.nodes_dist_memo,
-                       max_steps=max_steps,
-                       max_dist=max_dist
-        )
+        route = self.searcher.search(src, dst, max_steps, max_dist)
         
         if 'path' not in route:
             route['path'] = self.transform_node_seq_to_edge_seq(route['waypoints'])
