@@ -24,4 +24,4 @@ path, info = matcher.matching(traj, plot=True, top_k=5)
 
 matcher.eval(traj, path, 20)
 
-matcher.project(traj, path)
+# matcher.project(traj, path)

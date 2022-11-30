@@ -1,4 +1,3 @@
-#%%
 import heapq
 import numpy as np
 import pandas as pd
@@ -85,19 +84,30 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     # `w` is the shortest path from `ci-1` to `ci`
     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
     # distance transmission probability
-    gt.loc[:, 'v'] = gt.d_euc / gt.w
-    mask = gt.v > 1
-    gt.loc[mask, 'v'] = 1 / gt.loc[mask, 'v']
+    gt.loc[:, 'dist_prob'] = gt.d_euc / gt.w
+    mask = gt['dist_prob'] > 1
+    gt.loc[mask, 'dist_prob'] = 1 / gt.loc[mask, 'dist_prob']
 
     # case: flag = 1
     filtered_idxs = gt.query("flag == 1").index
-    gt.loc[filtered_idxs, 'v'] = 1
+    gt.loc[filtered_idxs, 'dist_prob'] = 1
     gt.loc[filtered_idxs, 'path'] = None
 
     # case: flag = 2
     filtered_idxs = gt.query("flag == 2").index
-    gt.loc[filtered_idxs, 'v'] *= .99
+    gt.loc[filtered_idxs, 'dist_prob'] *= .99
 
+    return gt
+
+
+def cal_trans_prob(gt, geometry, dir_trans):
+    if dir_trans:
+        gt.loc[:, 'whole_path'] = merge_steps(gt)
+        cal_dir_prob(gt, geometry)
+        gt.loc[:, 'trans_prob'] = gt.dist_prob * gt.f_dir
+        return gt
+
+    gt.loc[:, 'trans_prob'] = gt.dist_prob
     return gt
 
 
@@ -116,13 +126,7 @@ def analyse_spatial_info(geograph: GeoDigraph,
     gt = construct_graph(points, cands, dir_trans=dir_trans, gt_keys=gt_keys)
     
     gt = cal_dist_prob(gt, geograph, max_steps, max_dist)
-    gt.loc[:, 'whole_path'] = merge_steps(gt)
-
-    if dir_trans:
-        cal_dir_prob(gt, geometry)
-        gt.loc[:, 'f'] = gt.v * gt.f_dir
-    else:
-        gt.loc[:, 'f'] = gt.v
+    cal_trans_prob(gt, geometry, dir_trans)
 
     return gt
 
@@ -131,13 +135,7 @@ def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='whole_path'):
     ori_index = gt.index
     gt = cal_dist_prob(gt, net)
     gt.index = ori_index
-    gt.loc[:, 'whole_path'] = merge_steps(gt)
-
-    if dir_trans:
-        cal_dir_prob(gt, geometry)
-        gt.loc[:, 'f'] = gt.v * gt.f_dir
-    else:
-        gt.loc[:, 'f'] = gt.v
+    cal_trans_prob(gt, geometry, dir_trans)
     
     return gt
 

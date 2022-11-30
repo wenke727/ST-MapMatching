@@ -25,7 +25,7 @@ def _plot_candidates(points, edges, match_res):
     return 
 
 
-def _filter_candidate(df_candidates: gpd.GeoDataFrame,
+def _filter_candidate(df: gpd.GeoDataFrame,
                       top_k: int = 5,
                       pid: str = 'pid',
                       edge_keys: list = ['way_id', 'dir'],
@@ -34,7 +34,7 @@ def _filter_candidate(df_candidates: gpd.GeoDataFrame,
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
 
     Args:
-        df_candidates (gpd.GeoDataFrame): _description_
+        df (gpd.GeoDataFrame): df candidates.
         top_k (int, optional): _description_. Defaults to 5.
         pid (str, optional): _description_. Defaults to 'pid'.
         edge_keys (list, optional): The keys of edge ,which help to filter the edges which belong to the same road. Defaults to ['way_id', 'dir'].
@@ -42,7 +42,6 @@ def _filter_candidate(df_candidates: gpd.GeoDataFrame,
     Returns:
         gpd.GeoDataFrame: The filtered candidates.
     """
-    df = df_candidates
     origin_size = df.shape[0]
 
     df = df.sort_values([pid, 'dist_p2c'], ascending=[True, True])
@@ -108,14 +107,15 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     if ll:
         radius *= ll_to_utm_dis_factor
 
+    # check edge_attrs
     _edge_attrs = edge_attrs[:]
     edge_attrs = [i for i in edge_attrs if i in list(edges)]
     if len(edge_attrs) != len(_edge_attrs):
         logger.warning(f"Check edge attrs, only exists: {edge_attrs}")
     
-    boxes = points.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
     # The first subarray contains input geometry integer indexes.
     # The second subarray contains tree geometry integer indexes.
+    boxes = points.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
     cands = edges.sindex.query_bulk(boxes, predicate=predicate)
     if len(cands[0]) == 0:
         return None
@@ -168,9 +168,9 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
 
 def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
-    def func(x): return project_point_to_polyline(
-        x.points, x.edges, coord_sys=True
-    )
+    def func(x): 
+        return project_point_to_polyline(
+            x.points, x.edges, coord_sys=True)
 
     df = pd.DataFrame({'points': points, "edges": edges})
     res = df.apply(func, axis=1, result_type='expand')[keep_cols]

@@ -7,7 +7,25 @@
 - [x] lcss 轨迹相似度评估函数
 - [x] 双向 A* 最短路算法，需要反向道路
 - [ ] 匹配异常 log
-- [ ] ALT 算法
+- [ ] ALT 算法，加速最短路搜索速度
+
+## [V1.2.6] - 2022-11-30
+
+### Added
+
+- ST_Matching
+  - `matching` 新增匹配概率的计算
+  - 返回增加: status, prob, trans_prob, dist_prob, dir_prob
+
+- CODE 匹配状态码
+  - 0  成功匹配；
+  - 1 所有节点位于同一条线上；
+  - 2 所有节点位于同一个点上； 
+  - 3 没有候选节点；
+  - 4 匹配结果，prob低于阈值
+- Geograh 支持 Bidirection Astar
+  - 但没有通过测试集的测试，需要 debug 优化
+
 
 ## [V1.2.5] - 2022-11-28
 

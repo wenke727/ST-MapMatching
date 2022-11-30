@@ -40,7 +40,7 @@ def coords_pair_dist(o, d, xy=True):
 
 
 
-def haversine_vector(array1, array2, unit=Unit.KILOMETERS, comb=False, normalize=False):
+def haversine_vector_xy(array1, array2, unit=Unit.KILOMETERS, comb=False, normalize=False):
     '''
     The exact same function as "haversine", except that this
     version replaces math functions with numpy functions.

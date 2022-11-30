@@ -69,4 +69,9 @@ if __name__ == "__main__":
     
     net.search_memo.keys()
 
+    import pandas as pd
+    pd.DataFrame.from_dict(net.search_memo, orient='index')
+    from mapmatching.utils.serialization import save_checkpoint
+
+    save_checkpoint(net.search_memo, './data/debug/astar_search_memo.pkl')
 

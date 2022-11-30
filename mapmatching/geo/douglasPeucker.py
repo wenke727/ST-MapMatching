@@ -25,7 +25,8 @@ def dp_compress(point_list, dist_thres=8, verbose=False):
             key_point_index = 0
 
             while(index < end):
-                cur_vertical_dist = get_vertical_dist(point_list[index][:2], point_list[start][:2], point_list[end][:2])
+                cur_vertical_dist = get_vertical_dist(
+                    point_list[index][:2], point_list[start][:2], point_list[end][:2])
                 if cur_vertical_dist > max_vertical_dist:
                     max_vertical_dist = cur_vertical_dist
                     key_point_index = index

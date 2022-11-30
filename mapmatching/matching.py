@@ -1,8 +1,7 @@
-
-#%%
 import os
 os.environ["USE_PYGEOS"] = "1"
 
+from enum import Enum
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -21,7 +20,7 @@ from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
-from .match.visualization import matching_debug_level, plot_matching
+from .match.visualization import matching_debug_level, plot_matching, plot_matching_result
 from .match.projection import project_traj_points_to_network
 
 from .utils.timer import Timer, timeit
@@ -31,6 +30,14 @@ from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 
 SET_PANDAS_LOG_FORMET()
+
+
+class CODE:
+    SUCCESS       = 0 # 成功匹配
+    SAME_LINK     = 1 # 所有轨迹点位于同一条线上
+    ONE_POINT     = 2 # 所有轨迹点位于同一个点上
+    NO_CANDIDATES = 3 # 轨迹点无法映射到候选边上
+    FAILED        = 4 # 匹配结果，prob低于阈值
 
 
 class ST_Matching():
@@ -43,6 +50,7 @@ class ST_Matching():
                  cand_search_radius=50,
                  crs_wgs=4326,
                  crs_prj=900913,
+                 prob_thres=.8
                  ):
         self.net = net
         self.dp_thres = dp_thres
@@ -55,6 +63,7 @@ class ST_Matching():
             os.makedirs(self.debug_folder)
 
         # hyper parameters
+        self.prob_thres = prob_thres
         self.top_k_candidates = top_k_candidates
         self.cand_search_radius = cand_search_radius
         self.route_planning_max_search_steps = max_search_steps
@@ -62,55 +71,92 @@ class ST_Matching():
 
     @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, 
-                       simplify=True, tolerance=10, plot=True, save_fn=None, 
-                       debug_in_levels=False):
-        # tolerance: 10 meters
+                       simplify=True, tolerance=10, plot=False, save_fn=None, 
+                       debug_in_levels=False, details=False): 
+        info = {'status': CODE.SUCCESS} # 0, 成功匹配；1 所有节点位于同一条线上; 2 所有节点位于同一个点上 3 没有候选节点；
+        
+        # simplify trajectory: (tolerance, 10 meters)
         if simplify:
             ori_traj = traj
             traj = traj.copy()
             traj = self._simplify(traj, tolerance=tolerance)
 
+        # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
         cands = analyse_geometric_info(
             points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
         
-        # No matched
-        if cands is None:
-            return None, None
-        
-        # Only one single point matched
-        if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
-            # TODO: 提取线形
-            eid = cands.sort_values('dist_p2c').head(1).eid.values
-            route = self.net.get_edge(eid, reset_index=True)
-            route.loc[:, 'geometry'] = Point(*cands.iloc[0].projection)
-            return route, None
+        # is_valid
+        s, route = self.is_valid(traj, cands, info)
+        if not s:
+            return route, info
 
+        # spatial analysis
         if not beam_search:
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
-            rList = process_viterbi_pipeline(cands, graph[['pid_1', 'f']])
+            prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
         else:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
-            _, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
+            prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
         
-        route, conns = get_path(self.net, traj, rList, graph, cands)
+        route, conns, steps = get_path(self.net, traj, rList, graph, cands)
+    
+        if steps is not None:
+            coef = 1 / len(steps.dist_prob)
+            dist_prob = np.prod(steps.dist_prob)
+            trans_prob = np.prod(steps.trans_prob)
+            prob, dist_prob, trans_prob = np.power([prob, dist_prob, trans_prob], coef)
         
+            info["prob"] = prob
+            info["trans_prob"] = trans_prob
+            info["dist_prob"] = dist_prob
+            if trans_prob < self.prob_thres:
+                info['status'] = CODE.FAILED
+
+            if dir_trans:
+                info['dir_prob'] = trans_prob / dist_prob
+        else:
+            info["status"] = CODE.SAME_LINK
+
+        if details:
+            _dict = {
+                'cands': cands,
+                'rList': rList,
+                'graph': graph,
+                'route': route,
+                "steps": steps,
+            }
+            info.update(_dict)
+
         if plot or save_fn:
-            ax = plot_matching(self.net, traj, cands, route, satellite=False, save_fn=save_fn)
+            # ax = plot_matching(self.net, traj, cands, route, satellite=False, save_fn=save_fn)
+            fig, ax = plot_matching_result(traj, route, self.net)
+            if simplify:
+                ori_traj.plot(ax=ax, color='gray', alpha=.3)
             if not plot:
                plt.close() 
 
         if debug_in_levels:
             self.matching_debug(traj, graph)
         
-        _dict = {
-            'cands': cands,
-            'rList': rList,
-            'graph': graph,
-            'route': route
-        }
+        return route, info
+
+    def is_valid(self, traj, cands, info):
+        # -> status, route
+        if cands is None:
+            info['status'] = CODE.NO_CANDIDATES
+            return False, None
         
-        return route, _dict
+        # Only one single point matched
+        if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
+            eid = cands.sort_values('dist_p2c').head(1).eid.values
+            route = self.net.get_edge(eid, reset_index=True)
+            route.loc[:, 'geometry'] = Point(*cands.iloc[0].projection)
+            info['status'] = CODE.ONE_POINT
+            
+            return False, route
+        
+        return True, None
 
     def eval(self, traj, path, eps=10, metric='lcss', g=None):
         assert metric in ['lcss', 'edr', 'erp']
@@ -165,6 +211,11 @@ class ST_Matching():
         
         return
 
+    def plot_result(self, traj, route):
+        fig, ax = plot_matching_result(traj, route, self.net)
+
+        return fig
+
     def get_points(self, traj, ids):
         return NotImplementedError
     
@@ -175,7 +226,6 @@ class ST_Matching():
         return NotImplementedError
 
 
-#%%
 if __name__ == "__main__":
     net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_pygeos.ckpt')
     self = ST_Matching(net=net)

@@ -5,7 +5,7 @@ from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
 from .base import Digraph
-from .astar import Astar
+from .astar import Astar, Bi_Astar
 from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
@@ -21,16 +21,17 @@ class GeoDigraph(Digraph):
                              df_nodes.to_dict(orient='index'), *args, **kwargs)
             self.init_searcher()
 
-    def init_searcher(self):
-        # self.searcher = BiAStar(self.graph, self.graph_r, self.nodes,
-        #                         search_memo=self.search_memo,
-        #                         nodes_dist_memo=self.nodes_dist_memo
-        #                         )
-        
-        self.searcher = Astar(self.graph, self.nodes, 
-                              search_memo=self.search_memo, 
-                              nodes_dist_memo=self.nodes_dist_memo,
-                              max_steps=2000, max_dist=10000)
+    def init_searcher(self, algs='astar'):
+        if algs == 'astar':
+            self.searcher = Astar(self.graph, self.nodes, 
+                                search_memo=self.search_memo, 
+                                nodes_dist_memo=self.nodes_dist_memo,
+                                max_steps=2000, max_dist=10000)
+        else:
+            self.searcher = Bi_Astar(self.graph, self.graph_r, self.nodes,
+                                    search_memo=self.search_memo,
+                                    nodes_dist_memo=self.nodes_dist_memo
+                                    )
 
         
     def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):

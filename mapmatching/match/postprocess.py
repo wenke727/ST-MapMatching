@@ -21,7 +21,7 @@ def get_path(net:GeoDigraph,
         net ([type]): [description]
 
     Returns:
-        [type]: [description]
+        [list]: [path, connectors, steps]
     
     Example:
         rList
@@ -33,7 +33,7 @@ def get_path(net:GeoDigraph,
     # Case: one step
     if rList.eid.nunique() == 1:
         path = get_one_step(net, rList, cands)
-        return path, get_connectors(traj, path) if connector else None
+        return path, get_connectors(traj, path) if connector else None, None
     
     # Case: normal
     steps = rList.copy()
@@ -41,7 +41,7 @@ def get_path(net:GeoDigraph,
     steps = steps.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
                  .query('eid_0 != eid_1')\
                  .set_index(['pid_0', 'eid_0', 'eid_1'])\
-                 .merge(graph[['path']], left_index=True, right_index=True)\
+                 .merge(graph[['path', 'dist_prob', 'trans_prob']], left_index=True, right_index=True)\
                  .reset_index()
 
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.path]) if x.path else [x.eid_0]
@@ -50,8 +50,10 @@ def get_path(net:GeoDigraph,
     path = net.get_edge(eids, reset_index=True)
 
     # update first/last step 
-    step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
-    step_n = cands.query(f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
+    step_0 = cands.query(
+        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
+    step_n = cands.query(
+        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
     n = path.shape[0] - 1
     assert n > 0, "Check od list"
     path.loc[0, 'geometry'] = LineString(step_0)
@@ -62,7 +64,7 @@ def get_path(net:GeoDigraph,
     # filter empty geometry
     path = path[~path.geometry.is_empty]
     
-    return path, get_connectors(traj, path) if connector else None
+    return path, get_connectors(traj, path) if connector else None, steps
 
 
 def get_one_step(net, rList, cands):

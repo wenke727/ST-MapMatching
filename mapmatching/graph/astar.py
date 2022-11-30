@@ -140,7 +140,7 @@ class Bi_Astar(PathPlanning):
         super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level)
         self.graph_r= graph_r
 
-    def search(self, src, dst, level='debug'):
+    def search(self, src, dst, max_steps=None, max_dist=None, level='debug'):
         status, info = self._check_od(src, dst, level)
         if not status:
             return info
@@ -154,7 +154,7 @@ class Bi_Astar(PathPlanning):
             return  {"status": 2, 'waypoints': [], 'cost': np.inf} 
 
         path = self.extract_path(src, dst)
-        cost = self.visited_backward[self.meet] = self.visited_forward[self.meet]
+        cost = self.visited_backward[self.meet] + self.visited_forward[self.meet]
         res = {'status': 0, 'waypoints':path, 'cost': cost}
 
         return res
@@ -190,11 +190,11 @@ class Bi_Astar(PathPlanning):
         l0 = self.calculate_nodes_dist(src, dst)
 
         self.queue_forward = []
-        self.parent_forward = {src: src}
+        self.parent_forward = {src: None}
         self.visited_forward = {src: 0}
 
         self.queue_backward = []
-        self.parent_backward = {dst: dst}
+        self.parent_backward = {dst: None}
         self.visited_backward = {dst: 0}
 
         heapq.heappush(self.queue_forward, (l0, 0, src))
@@ -275,9 +275,9 @@ class Bi_Astar(PathPlanning):
 
         while True:
             s = self.parent_forward[s]
-            path_fore.append(s)
-            if s == src:
+            if s is None:
                 break
+            path_fore.append(s)
 
         # extract path for backward part
         path_back = []
@@ -285,9 +285,9 @@ class Bi_Astar(PathPlanning):
 
         while True:
             s = self.parent_backward[s]
-            path_back.append(s)
-            if s == dst:
+            if s is None:
                 break
+            path_back.append(s)
 
         return list(reversed(path_fore)) + list(path_back)
 
@@ -325,28 +325,45 @@ class Bi_Astar(PathPlanning):
 
         ax.legend()
 
-
 if __name__ == "__main__":
     from stmm.graph import GeoDigraph
     network = GeoDigraph()
     network.load_checkpoint(ckpt='../../data/network/Shenzhen_graph_pygeos.ckpt')
     # network.to_postgis('shenzhen')
 
+    from tqdm import tqdm
+    from stmm.utils.serialization import load_checkpoint
+    astar_search_memo = load_checkpoint('../../data/debug/astar_search_memo.pkl')
+
     searcher = Bi_Astar(network.graph, network.graph_r, network.nodes)
-    path = searcher.search(src=5345110208, dst=8526861081)
-    searcher.plot_searching_boundary(path['waypoints'], network)
+    
+    error_lst = []
+    for (src, dst), ans in astar_search_memo.items():
+        res = searcher.search(src, dst)
+        cond = np.array(res['waypoints']) == np.array(ans['waypoints'])
+        if isinstance(cond, np.ndarray):
+            cond = cond.all()
+        if not cond:
+            # print(res['cost'] == ans['cost'], cond)
+            print(f"\n\n({src}, {dst})\n\tans: {ans['waypoints']}, {ans['cost']}\n\tres: {res['waypoints']}, {res['cost']}")
 
-    path = searcher.search(src=5345110208, dst=8524766759)
-    searcher.plot_searching_boundary(path['waypoints'], network)
 
-    path = searcher.search(src=5345110208, dst=8524766832)
-    searcher.plot_searching_boundary(path['waypoints'], network)
+    # path = searcher.search(src=5345110208, dst=8526861081)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
 
-    path = searcher.search(src=5345110208, dst=8524766760)
-    searcher.plot_searching_boundary(path['waypoints'], network)
+    # path = searcher.search(src=5345110208, dst=8524766759)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
 
-    path = searcher.search(src=5345110208, dst=9909317168)
-    searcher.plot_searching_boundary(path['waypoints'], network)
+    # path = searcher.search(src=5345110208, dst=8524766832)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
 
-    path = searcher.search(src=5345110208, dst=8526861025)
-    searcher.plot_searching_boundary(path['waypoints'], network)
+    # path = searcher.search(src=5345110208, dst=8524766760)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
+
+    # path = searcher.search(src=5345110208, dst=9909317168)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
+
+    # path = searcher.search(src=5345110208, dst=8526861025)
+    # searcher.plot_searching_boundary(path['waypoints'], network)
+
+# %%

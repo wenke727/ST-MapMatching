@@ -154,7 +154,7 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
     factors[d==0] = 0 # fixme the situtaion of `d` is 0 
     
     foots = np.vstack([factors * pqx + lines[:, 0, 0], 
-                       factors * pqy + lines[:, 0, 1]]).T
+                       factors * pqy + lines[:, 0, 1]]).T.round(7)
     if coord_sys:
         line_length = haversine_vector(coords[:-1, ::-1], coords[1:, ::-1], unit=Unit.METERS)  
     else:

@@ -6,7 +6,7 @@ from .spatialAnalysis import get_trans_prob_bet_layers
 from ..utils import Timer, timeit
 
 
-def _formula(x, y, mode):
+def cal_prob_func(x, y, mode):
     if mode == '+':
         return x +  y
     elif mode == '*':
@@ -36,7 +36,7 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
         times.append(timer.stop())
         
-        df_layer.loc[:, 'prob'] = _formula(prev_probs, df_layer.f * df_layer.observ_prob, mode)
+        df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
         _max_prob = df_layer['prob'].max()
 
         # prune -> pick the most likely one
@@ -70,8 +70,7 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
     _log = f"Route planning time cost: {np.sum(times):.3f} s, trim ratio: {(1 - ratio)*100:.1f} %"
-    print(_log)
-    # getattr(logger, level)(_log)
+    getattr(logger, level)(_log)
     
     return end_prob, rList, gt_beam
 
@@ -188,11 +187,11 @@ def prepare_viterbi_input(cands, gt):
 
 def process_viterbi_pipeline(cands, gt):
     states, observations, start_prob, trans_prob, emit_prob = prepare_viterbi_input(cands, gt)
-    _, rList = decode(observations, states, start_prob, trans_prob, emit_prob)
+    prob, rList = decode(observations, states, start_prob, trans_prob, emit_prob)
 
     rList = cands.set_index(['pid', 'eid']).loc[rList][[ 'src', 'dst']].reset_index()
     
-    return rList
+    return prob, rList
 
 
 if __name__ == "__main__":

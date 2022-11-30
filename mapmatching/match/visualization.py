@@ -1,6 +1,7 @@
 
 import os
 import time
+import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import box
@@ -117,35 +118,39 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
 
 
 def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=None, categorical=True):
-    def _base_plot():
+    def _base_plot(df):
         if column is not None and column in traj.columns:
-            ax = traj.plot(alpha=.3, column=column, categorical=categorical, legend=True)
+            ax = df.plot(alpha=.3, column=column, categorical=categorical, legend=True)
         else:
-            ax = traj.plot(alpha=.3, color='black')
+            ax = df.plot(alpha=.3, color='black')
         ax.axis('off')
         
         return ax
     
     # plot，trajectory point
+    _df = gpd.GeoDataFrame(pd.concat([traj, route]))
     if satellite:
         try:
             from tilemap import plot_geodata
-            _, ax = plot_geodata(traj, alpha=.3, color='black', extra_imshow_args={'alpha':.5}, reset_extent=True)
+            _, ax = plot_geodata(_df, alpha=0, tile_alpha=.5, reset_extent=True)
             if column is not None:
-                traj.plot(alpha=.3, column=column, categorical=categorical, legend=True, ax=ax)
+                traj.plot(alpha=0, column=column, categorical=categorical, legend=True, ax=ax)
         except:
-            ax = _base_plot()       
+            ax = _base_plot(_df)       
     else:
-        ax = _base_plot()
+        ax = _base_plot(_df)
         
-    traj.plot(ax=ax, color='blue', alpha=.5, label= 'Compressed')
+    traj.plot(ax=ax, color='blue', alpha=.5, label= 'Trajectory')
     traj.head(1).plot(ax=ax, marker = '*', color='red', zorder=9, label= 'Start point')
+    
     # network
     edge_lst = net.spatial_query(box(*traj.total_bounds))
     net.get_edge(edge_lst).plot(ax=ax, color='black', linewidth=.8, alpha=.4, label='Network' )
+    
     # candidate
     net.get_edge(cands.eid.values).plot(
         ax=ax, label='Candidates', color='blue', linestyle='--', linewidth=.8, alpha=.5)
+    
     # route
     if route is not None:
         route.plot(ax=ax, label='Path', color='red', alpha=.5)
@@ -160,6 +165,34 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
         # plt.close()
     
     return ax
+
+
+def _base_plot(df, column=None, categorical=True):
+    if column is not None and column in df.columns:
+        ax = df.plot(alpha=.3, column=column, categorical=categorical, legend=True)
+    else:
+        ax = df.plot(alpha=.3, color='black')
+    ax.axis('off')
+    
+    return ax
+
+
+def plot_matching_result(traj_points, path, net, column=None, categorical=True):
+    _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
+    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0)
+
+    traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
+    traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
+    
+    path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.7)
+
+    x0, x1, y0, y1 = ax.axis()
+    zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})
+    net.df_edges.sjoin(zones, how="inner", predicate='intersects')\
+                .plot(ax=ax, color='black', label='roads', alpha=.4, zorder=2, linewidth=1)
+    ax.legend()
+
+    return fig, ax
 
 
 if __name__ == "__main__":
