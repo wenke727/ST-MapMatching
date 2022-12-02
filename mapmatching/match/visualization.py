@@ -58,11 +58,11 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
     net.get_edge([dst]).plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
 
     # aux
-    prob = item.observ_prob * item.f
-    if 'f_dir' in item:
-        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.f:.2f} ({item.v:.2f}, {item.f_dir:.2f})"
+    prob = item.observ_prob * item.trans_prob
+    if 'dir_prob' in item:
+        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.trans_prob:.2f} ({item.dist_prob:.2f}, {item.dir_prob:.2f})"
     else:
-        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.f:.2f}"
+        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.trans_prob:.2f}"
 
     if maximun is not None and prob == maximun:
         color = 'red'
@@ -98,7 +98,7 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
     cols = df_layer.index.get_level_values(1).unique()
     n_rows, n_cols = len(rows), len(cols)
 
-    _max = (df_layer.observ_prob * df_layer.f).max()
+    _max = (df_layer.observ_prob * df_layer.trans_prob).max()
     
     plt.figure(figsize=(5*n_cols, 5*n_rows))
     for i, src in enumerate(rows):
@@ -161,7 +161,7 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
     
     if save_fn is not None:
         plt.tight_layout()
-        plt.savefig(save_fn, dpi=300)
+        plt.savefig(save_fn, dpi=300, bbox_inches='tight', pad_inches=0)
         # plt.close()
     
     return ax
@@ -179,7 +179,7 @@ def _base_plot(df, column=None, categorical=True):
 
 def plot_matching_result(traj_points, path, net, column=None, categorical=True):
     _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
-    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0)
+    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0, figsize=(6,6))
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')

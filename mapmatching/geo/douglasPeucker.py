@@ -100,7 +100,7 @@ def simplify_trajetory_points(points: gpd.GeoDataFrame, tolerance: int = None, i
     points = dp_compress_for_points(points, dist_thres=tolerance)
 
     if ori_size == 2:
-        if points.iloc[0].geometry.distance(points.iloc[1].geometry) < 1e-4:
+        if points.iloc[0].geometry.distance(points.iloc[1].geometry) < 1e-6:
             points = points.head(1)
             if logger:
                 logger.info(

@@ -59,3 +59,28 @@ def geom_series_distance(col1, col2, in_crs=4326, out_crs=900913):
     assert isinstance(a, gpd.GeoSeries) and isinstance(b, gpd.GeoSeries)
     return a.distance(b)
 
+
+def cal_points_seq_distance(points, xy=True):
+    if xy:
+        points = points.copy()
+        points = points[:, ::-1]
+    
+    dist_np = haversine_vector(points[:-1], points[1:], unit=Unit.METERS)
+    
+    return dist_np.sum()
+
+
+def merge_coords_intervals_on_same_edge(step_0:np.ndarray, step_n:np.ndarray):
+    if step_0 is None:
+        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
+        coords = step_n
+    elif step_n is None:
+        coords = step_0
+    else:
+        # 也会存在反方向的情况，但在这里先忽略不计，认为是在同一个线段上
+        coords = np.concatenate((step_0[0][np.newaxis, :], 
+                                step_0[[p in step_n for p in step_0]], 
+                                step_n[-1][np.newaxis, :])
+        )
+    
+    return coords

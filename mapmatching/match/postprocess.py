@@ -1,9 +1,10 @@
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import LineString
-from traitlets import Bool
 
+from .code import STATUS
 from ..graph import GeoDigraph
+from ..geo.misc import merge_coords_intervals_on_same_edge
 
 
 def get_path(net:GeoDigraph, 
@@ -11,7 +12,9 @@ def get_path(net:GeoDigraph,
              rList:gpd.GeoDataFrame, 
              graph:gpd.GeoDataFrame, 
              cands:gpd.GeoDataFrame,
-             connector:Bool = False
+             connector:bool = False,
+             metric = {},
+             prob_thres = .8
              ):
     """Get path by matched sequence node.
 
@@ -30,9 +33,13 @@ def get_path(net:GeoDigraph,
        |  0 |     0 | 17916 |  8169270272 |  2376751183 |\n
        |  1 |     1 | 17916 |  8169270272 |  2376751183 |
     """
+    step_0, step_n = get_first_and_last_step(cands, rList)
+
     # Case: one step
     if rList.eid.nunique() == 1:
-        path = get_one_step(net, rList, cands)
+        # TODO flag [1, 2]
+        path = get_step_on_the_same_link(net, rList.eid[0], step_0, step_n)
+        metric['status'] = STATUS.SAME_LINK
         return path, get_connectors(traj, path) if connector else None, None
     
     # Case: normal
@@ -50,10 +57,6 @@ def get_path(net:GeoDigraph,
     path = net.get_edge(eids, reset_index=True)
 
     # update first/last step 
-    step_0 = cands.query(
-        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
-    step_n = cands.query(
-        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
     n = path.shape[0] - 1
     assert n > 0, "Check od list"
     path.loc[0, 'geometry'] = LineString(step_0)
@@ -63,31 +66,39 @@ def get_path(net:GeoDigraph,
     
     # filter empty geometry
     path = path[~path.geometry.is_empty]
-    
+
+    # update metric
+    coef = 1 / len(steps.dist_prob)
+    dist_prob = np.prod(steps.dist_prob)
+    trans_prob = np.prod(steps.trans_prob)
+    normal_prob, dist_prob, trans_prob = np.power([metric['prob'], dist_prob, trans_prob], coef)
+
+    metric["normal_prob"] = normal_prob
+    metric["trans_prob"] = trans_prob
+    metric["dist_prob"] = dist_prob
+    if trans_prob < prob_thres:
+        metric['status'] = STATUS.FAILED
+    else:
+        metric['status'] = STATUS.SUCCESS
+            
     return path, get_connectors(traj, path) if connector else None, steps
 
 
-def get_one_step(net, rList, cands):
-    r = rList.iloc[0]
-    step_0 = cands.query(f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
-    step_n = cands.query(f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
-
-    if step_0 is None:
-        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
-        coords = step_n
-    elif step_n is None:
-        coords = step_0
-    else:
-        # 也会存在反方向的情况，但在这里先忽略不计，认为是在同一个线段上
-        coords = np.concatenate((step_0[0][np.newaxis, :], 
-                                step_0[[p in step_n for p in step_0]], 
-                                step_n[-1][np.newaxis, :])
-        )
-
-    path = net.get_edge([r.eid], reset_index=True)
+def get_step_on_the_same_link(net, eid, step_0, step_n):
+    coords = merge_coords_intervals_on_same_edge(step_0, step_n)
+    path = net.get_edge([eid], reset_index=True)
     path.loc[0, 'geometry'] = LineString(coords)    
 
     return path
+
+
+def get_first_and_last_step(cands, rList):
+    step_0 = cands.query(
+        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
+    step_n = cands.query(
+        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
+
+    return step_0, step_n
 
 
 def get_connectors(traj, path):

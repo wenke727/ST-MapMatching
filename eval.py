@@ -67,11 +67,11 @@ if __name__ == "__main__":
 
     evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
     
-    net.search_memo.keys()
+    # net.search_memo.keys()
 
-    import pandas as pd
-    pd.DataFrame.from_dict(net.search_memo, orient='index')
-    from mapmatching.utils.serialization import save_checkpoint
+    # import pandas as pd
+    # pd.DataFrame.from_dict(net.search_memo, orient='index')
+    # from mapmatching.utils.serialization import save_checkpoint
 
-    save_checkpoint(net.search_memo, './data/debug/astar_search_memo.pkl')
+    # save_checkpoint(net.search_memo, './data/debug/astar_search_memo.pkl')
 

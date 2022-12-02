@@ -1,7 +1,6 @@
 import os
 os.environ["USE_PYGEOS"] = "1"
 
-from enum import Enum
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -15,6 +14,7 @@ from .geo.douglasPeucker import simplify_trajetory_points
 from .osmnet.build_graph import build_geograph
 
 from .match.io import load_points
+from .match.code import STATUS
 from .match.postprocess import get_path
 from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
@@ -30,14 +30,6 @@ from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 
 SET_PANDAS_LOG_FORMET()
-
-
-class CODE:
-    SUCCESS       = 0 # 成功匹配
-    SAME_LINK     = 1 # 所有轨迹点位于同一条线上
-    ONE_POINT     = 2 # 所有轨迹点位于同一个点上
-    NO_CANDIDATES = 3 # 轨迹点无法映射到候选边上
-    FAILED        = 4 # 匹配结果，prob低于阈值
 
 
 class ST_Matching():
@@ -73,7 +65,7 @@ class ST_Matching():
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, 
                        simplify=True, tolerance=10, plot=False, save_fn=None, 
                        debug_in_levels=False, details=False): 
-        info = {'status': CODE.SUCCESS} # 0, 成功匹配；1 所有节点位于同一条线上; 2 所有节点位于同一个点上 3 没有候选节点；
+        info = {'status': STATUS.UNKNOWN}
         
         # simplify trajectory: (tolerance, 10 meters)
         if simplify:
@@ -92,40 +84,11 @@ class ST_Matching():
             return route, info
 
         # spatial analysis
-        if not beam_search:
-            graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
-            prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
-        else:
-            graph = construct_graph(traj, cands, dir_trans=dir_trans)
-            prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
-        
-        route, conns, steps = get_path(self.net, traj, rList, graph, cands)
+        rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=info)
+        route, conns, steps = get_path(self.net, traj, rList, graph, cands, metric=info)
     
-        if steps is not None:
-            coef = 1 / len(steps.dist_prob)
-            dist_prob = np.prod(steps.dist_prob)
-            trans_prob = np.prod(steps.trans_prob)
-            prob, dist_prob, trans_prob = np.power([prob, dist_prob, trans_prob], coef)
-        
-            info["prob"] = prob
-            info["trans_prob"] = trans_prob
-            info["dist_prob"] = dist_prob
-            if trans_prob < self.prob_thres:
-                info['status'] = CODE.FAILED
-
-            if dir_trans:
-                info['dir_prob'] = trans_prob / dist_prob
-        else:
-            info["status"] = CODE.SAME_LINK
-
         if details:
-            _dict = {
-                'cands': cands,
-                'rList': rList,
-                'graph': graph,
-                'route': route,
-                "steps": steps,
-            }
+            _dict = {'cands': cands,'rList': rList, 'graph': graph, 'route': route, "steps": steps}
             info.update(_dict)
 
         if plot or save_fn:
@@ -133,8 +96,11 @@ class ST_Matching():
             fig, ax = plot_matching_result(traj, route, self.net)
             if simplify:
                 ori_traj.plot(ax=ax, color='gray', alpha=.3)
+                traj.plot(ax=ax, color='yellow', alpha=.5)
             if not plot:
                plt.close() 
+            if save_fn:
+                fig.savefig(save_fn, dpi=300, bbox_inches='tight', pad_inches=0.02)
 
         if debug_in_levels:
             self.matching_debug(traj, graph)
@@ -144,7 +110,7 @@ class ST_Matching():
     def is_valid(self, traj, cands, info):
         # -> status, route
         if cands is None:
-            info['status'] = CODE.NO_CANDIDATES
+            info['status'] = STATUS.NO_CANDIDATES
             return False, None
         
         # Only one single point matched
@@ -152,11 +118,23 @@ class ST_Matching():
             eid = cands.sort_values('dist_p2c').head(1).eid.values
             route = self.net.get_edge(eid, reset_index=True)
             route.loc[:, 'geometry'] = Point(*cands.iloc[0].projection)
-            info['status'] = CODE.ONE_POINT
+            info['status'] = STATUS.ONE_POINT
             
             return False, route
         
         return True, None
+
+    def _spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
+        if not beam_search:
+            graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
+            prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
+        else:
+            graph = construct_graph(traj, cands, dir_trans=dir_trans)
+            prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
+
+        metric['prob'] = prob
+
+        return rList, graph
 
     def eval(self, traj, path, eps=10, metric='lcss', g=None):
         assert metric in ['lcss', 'edr', 'erp']
@@ -190,7 +168,7 @@ class ST_Matching():
     def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
         return simplify_trajetory_points(points, tolerance, inplace=True, logger=self.logger)
 
-    def matching_debug(self, traj, graph, debug_folder='../debug'):
+    def matching_debug(self, traj, graph, debug_folder='./debug'):
         """matching debug
 
         Args:
