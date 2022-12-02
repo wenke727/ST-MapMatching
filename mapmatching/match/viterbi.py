@@ -180,7 +180,7 @@ def prepare_viterbi_input(cands, gt):
     # BUG cands 坐标不连续的问题, 莫非是中断
     trans_prob = [gt.loc[i]['f'].to_dict() for i in observations[:-1] ]
     
-    # tmp = gt[['d_euc', 'first_step_len', 'last_step_len', 'cost', 'path', 'geometry', 'v', 'first_step', 'last_step', 'move_dir', 'f_dir']]
+    # tmp = gt[['d_euc', 'first_step_len', 'last_step_len', 'cost', 'path', 'geometry', 'v', 'first_step', 'last_step', 'move_dir', 'dir_prob']]
     
     return states, observations, start_prob, trans_prob, emit_prob
         

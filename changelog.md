@@ -8,13 +8,32 @@
 - [ ] ALT 算法，加速最短路搜索速度
 - [ ] matching 轨迹压缩
 
-## [V1.2.7.1] - 2022-11-30
+## [V1.2.7] - 2022-11-30
+
+### Added
+
+- `mapmatching/geo/misc.py`
+
+  cal_points_seq_distance 计算坐标序列的长度
+
+  merge_coords_intervals_on_same_edge 合并坐标序列区间
 
 ### Changed
 
 - douglasPeucker
 
   修改压缩两个节点的阈值， 1e-4 - > 1e-6
+
+- 纠正 `trajs/gt.json` 测试数据序列信息
+
+- match
+
+  - postprocess
+
+    修改逻辑
+
+  - matching 部分代码子函数化
+
 
 ## [V1.2.6] - 2022-11-30
 
@@ -133,7 +152,7 @@
     - flag == 1的情况，将 `v`设置为 1
   - `cal_dir_prob`
     - 方向角相似性， 考虑 step_0 + wayedges + step_n
-    - flag == 1的情况，将 `f_dir`设置为 1
+    - flag == 1的情况，将 `dir_prob`设置为 1
 
 - visualization
 

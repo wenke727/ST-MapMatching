@@ -106,7 +106,12 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
             ax = plt.subplot(n_rows, n_cols, i * n_cols + j + 1) 
             matching_debug_subplot(net, traj, df_layer.loc[src].loc[dst], layer_id, src, dst, ax=ax, maximun=_max)
 
-    plt.suptitle(f'Level: {layer_id} [observ / trans (dis, dir)]')
+    if 'dir_prob' in list(df_layer):
+        _title = f'Level: {layer_id} [observ * trans (dis, dir)]'
+    else:
+        _title = f'Level: {layer_id} [observ * trans]'
+
+    plt.suptitle(_title)
     plt.tight_layout()
     
     if debug_folder:
@@ -179,7 +184,7 @@ def _base_plot(df, column=None, categorical=True):
 
 def plot_matching_result(traj_points, path, net, column=None, categorical=True):
     _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
-    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0, figsize=(6,6))
+    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0)
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')

@@ -32,29 +32,30 @@ def get_path(net:GeoDigraph,
        |---:|------:|------:|------------:|------------:|\n
        |  0 |     0 | 17916 |  8169270272 |  2376751183 |\n
        |  1 |     1 | 17916 |  8169270272 |  2376751183 |
-    """
-    step_0, step_n = get_first_and_last_step(cands, rList)
-
-    # Case: one step
-    if rList.eid.nunique() == 1:
-        # TODO flag [1, 2]
-        path = get_step_on_the_same_link(net, rList.eid[0], step_0, step_n)
-        metric['status'] = STATUS.SAME_LINK
-        return path, get_connectors(traj, path) if connector else None, None
-    
-    # Case: normal
+    """ 
     steps = rList.copy()
+    connectors = get_connectors(traj, path) if connector else None
     steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
     steps = steps.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
-                 .query('eid_0 != eid_1')\
-                 .set_index(['pid_0', 'eid_0', 'eid_1'])\
-                 .merge(graph[['path', 'dist_prob', 'trans_prob']], left_index=True, right_index=True)\
-                 .reset_index()
+                 .merge(
+                    graph[['path', 'dist_prob', 'trans_prob']], 
+                    left_on=['pid_0', 'eid_0', 'eid_1'], right_index=True)
 
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.path]) if x.path else [x.eid_0]
-    eids = list(np.concatenate(steps.apply(extract_eids, axis = 1)))
-    eids.append(steps.iloc[-1].eid_1)
-    path = net.get_edge(eids, reset_index=True)
+    eids = np.concatenate(steps.apply(extract_eids, axis=1))
+    eids = np.append(eids, [steps.iloc[-1].eid_1])
+    keep_cond = np.append([True], eids[:-1] != eids[1:])
+    eids_lst = eids[keep_cond]
+
+    path = net.get_edge(eids_lst, reset_index=True)
+    step_0, step_n = _get_first_and_last_step(cands, rList)
+
+    # Case: one step
+    if path.shape[0] == 1:
+        coords = merge_coords_intervals_on_same_edge(step_0, step_n)
+        path.loc[0, 'geometry'] = LineString(coords)    
+        metric['status'] = STATUS.SAME_LINK
+        return path, connectors, None
 
     # update first/last step 
     n = path.shape[0] - 1
@@ -76,23 +77,17 @@ def get_path(net:GeoDigraph,
     metric["normal_prob"] = normal_prob
     metric["trans_prob"] = trans_prob
     metric["dist_prob"] = dist_prob
+    if "dir_prob" in list(graph):
+        metric["dir_prob"] = metric["trans_prob"] / metric["dist_prob"]
     if trans_prob < prob_thres:
         metric['status'] = STATUS.FAILED
     else:
         metric['status'] = STATUS.SUCCESS
             
-    return path, get_connectors(traj, path) if connector else None, steps
+    return path, connectors, steps
 
 
-def get_step_on_the_same_link(net, eid, step_0, step_n):
-    coords = merge_coords_intervals_on_same_edge(step_0, step_n)
-    path = net.get_edge([eid], reset_index=True)
-    path.loc[0, 'geometry'] = LineString(coords)    
-
-    return path
-
-
-def get_first_and_last_step(cands, rList):
+def _get_first_and_last_step(cands, rList):
     step_0 = cands.query(
         f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
     step_n = cands.query(

@@ -79,7 +79,7 @@ class ST_Matching():
             points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
         
         # is_valid
-        s, route = self.is_valid(traj, cands, info)
+        s, route = self._is_valid(traj, cands, info)
         if not s:
             return route, info
 
@@ -107,7 +107,7 @@ class ST_Matching():
         
         return route, info
 
-    def is_valid(self, traj, cands, info):
+    def _is_valid(self, traj, cands, info):
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
@@ -189,10 +189,23 @@ class ST_Matching():
         
         return
 
-    def plot_result(self, traj, route):
+    def plot_result(self, traj, route, info=None):
         fig, ax = plot_matching_result(traj, route, self.net)
+        if not info:
+            return fig, ax
 
-        return fig
+        text = []
+        for key, val in info.items():
+            if isinstance(val, float):
+                _str = f"{key}: {val * 100: .2f} %"
+            else:
+                _str = f"{key}: {val}"
+            text.append(_str)
+
+        x0, x1, y0, y1 = ax.axis()
+        ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text))
+
+        return fig, ax
 
     def get_points(self, traj, ids):
         return NotImplementedError

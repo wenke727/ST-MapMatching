@@ -9,6 +9,7 @@ from ..graph import GeoDigraph
 from .candidatesGraph import construct_graph
 
 from ..geo.azimuth import cal_linestring_azimuth_cos_dist
+from ..geo.misc import merge_coords_intervals_on_same_edge
 
 
 def merge_steps(gt):
@@ -20,22 +21,24 @@ def merge_steps(gt):
         return item
     
     def helper(x):
+        first = get_coords(x.first_step)
+        last = get_coords(x.last_step)
+        if x.flag == 1:
+            coords = merge_coords_intervals_on_same_edge(first, last)
+            return LineString(coords)
+
         if not x.geometry:
             waypoints = None
         else:
             waypoints = x.geometry.coords[:]
         
         lst = []
-        first = get_coords(x.first_step)
-        last = get_coords(x.last_step)
-        
         if first is not None:
             lst.append(first)
         if waypoints is not None:
             lst.append(waypoints)
         if last is not None:
             lst.append(last)
-
         if len(lst) == 0:
             return None
         
@@ -56,23 +59,21 @@ def _check_combine_steps(idx, traj, graph):
     _gdf.plot(ax=ax, color='r', linestyle=':', alpha=.5)
 
 
-# @timeit
 def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
-    # Add: f_dir
+    # Add: dir_prob
     assert geom in gt, "Check the geometry of gt"
 
     def _cal_dir_similarity(x):
         return cal_linestring_azimuth_cos_dist(x[geom], x['move_dir'], weight=True)
     
-    gt.loc[:, 'f_dir'] = gt.apply(_cal_dir_similarity, axis=1)
+    gt.loc[:, 'dir_prob'] = gt.apply(_cal_dir_similarity, axis=1)
     
     filtered_idxs = gt.query("flag == 1").index
-    gt.loc[filtered_idxs, 'f_dir'] = 1
+    gt.loc[filtered_idxs, 'dir_prob'] = 1
 
     return gt
 
 
-# @timeit
 def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000):
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
@@ -81,21 +82,19 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
                         net.search(x.dst, x.src, max_steps, max_dist),
                      axis=1, result_type='expand')
     gt.loc[:, list(paths)] = paths
+    idxs_flag_1 = gt.query("flag == 1").index
+    idxs_flag_2 = gt.query("flag == 2").index
+    gt.loc[idxs_flag_1, 'path'] = None
+
     # `w` is the shortest path from `ci-1` to `ci`
     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
+    gt.loc[idxs_flag_1, 'w'] = gt.last_step_len + gt.first_step_len - gt.cost
+
     # distance transmission probability
-    gt.loc[:, 'dist_prob'] = gt.d_euc / gt.w
-    mask = gt['dist_prob'] > 1
-    gt.loc[mask, 'dist_prob'] = 1 / gt.loc[mask, 'dist_prob']
-
-    # case: flag = 1
-    filtered_idxs = gt.query("flag == 1").index
-    gt.loc[filtered_idxs, 'dist_prob'] = 1
-    gt.loc[filtered_idxs, 'path'] = None
-
-    # case: flag = 2
-    filtered_idxs = gt.query("flag == 2").index
-    gt.loc[filtered_idxs, 'dist_prob'] *= .99
+    dist = gt.d_euc / gt.w
+    dist[dist > 1] = 1 / dist[dist > 1]
+    gt.loc[:, 'dist_prob'] = dist
+    gt.loc[idxs_flag_2, 'dist_prob'] *= .99
 
     return gt
 
@@ -104,7 +103,7 @@ def cal_trans_prob(gt, geometry, dir_trans):
     if dir_trans:
         gt.loc[:, 'whole_path'] = merge_steps(gt)
         cal_dir_prob(gt, geometry)
-        gt.loc[:, 'trans_prob'] = gt.dist_prob * gt.f_dir
+        gt.loc[:, 'trans_prob'] = gt.dist_prob * gt.dir_prob
         return gt
 
     gt.loc[:, 'trans_prob'] = gt.dist_prob
