@@ -1,4 +1,5 @@
 import numpy as np
+import geopandas as gpd
 from shapely.geometry import Point
 from haversine import haversine, haversine_vector, Unit
 
@@ -23,8 +24,6 @@ def cal_haversine_matrix(array1, array2, xy=True, unit=Unit.METERS):
 
     return matrix
 
-
-
 def coords_pair_dist(o, d, xy=True):
     if isinstance(o, Point) and isinstance(d, Point):
         return haversine((o.y, o.x), (d.y, d.x), unit=Unit.METERS)
@@ -37,8 +36,6 @@ def coords_pair_dist(o, d, xy=True):
             return haversine(o[:2], d[:2], unit=Unit.METERS)
     
     return np.inf
-
-
 
 def haversine_vector_xy(array1, array2, unit=Unit.KILOMETERS, comb=False, normalize=False):
     '''
@@ -104,6 +101,21 @@ def haversine_vector_xy(array1, array2, unit=Unit.KILOMETERS, comb=False, normal
          + numpy.cos(lat1) * numpy.cos(lat2) * numpy.sin(lng * 0.5) ** 2)
 
     return 2 * get_avg_earth_radius(unit) * numpy.arcsin(numpy.sqrt(d))
+
+def cal_points_seq_distance(points:np.ndarray, xy=True):
+    if xy:
+        points = points.copy()
+        points = points[:, ::-1]
+    
+    dist_np = haversine_vector(points[:-1], points[1:], unit=Unit.METERS)
+    
+    return dist_np, dist_np.sum()
+
+def cal_points_geom_seq_distacne(geoms:gpd.GeoSeries):
+    coords = np.concatenate(geoms.apply(lambda x: x.coords[:])).reshape(-1, 2)
+    dist, total = cal_points_seq_distance(coords, xy=True)
+
+    return dist, total
 
 
 if __name__ == "__main__":

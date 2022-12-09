@@ -5,7 +5,7 @@ from collections import deque
 from haversine import haversine, Unit
 from tilemap import plot_geodata
 
-# TODO: 寻找更快速的最短路算法， maybe bidirection Astar
+# TODO: 寻找更快速的最短路算法
 
 def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord'):
     assert src in nodes and dst in nodes, "Check the input o and d."
@@ -366,4 +366,3 @@ if __name__ == "__main__":
     # path = searcher.search(src=5345110208, dst=8526861025)
     # searcher.plot_searching_boundary(path['waypoints'], network)
 
-# %%

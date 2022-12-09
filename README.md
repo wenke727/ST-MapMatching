@@ -2,7 +2,7 @@
 
 ## 版本
 
-1.2.5
+1.2.7
 
 ## 描述
 
@@ -65,21 +65,21 @@ path, info = matcher.matching(traj, plot=True, top_k=5)
 ### 输出示例
 
 ```json
-{
-"type": "FeatureCollection",
-"features": [
-{ "type": "Feature", "properties": { "s": 1491845271, "e": 1491845278, "eid": 42012, "rid": 135913043, "name": "滨河大道辅路", "road_type": "primary", "dir": 1, "memo": "first step" }, "geometry": { "type": "LineString", "coordinates": [ [ 114.042179811625786, 22.530929457614068 ], [ 114.0425387, 22.530972 ] ] } },
-{ "type": "Feature", "properties": { "s": 1491845278, "e": 499265789, "eid": 54662, "rid": 40971700, "name": "滨河大道辅路", "road_type": "primary", "dir": 1, "memo": null }, "geometry": { "type": "LineString", "coordinates": [ [ 114.0425387, 22.530972 ], [ 114.0435665, 22.5310824 ] ] } },
-...,
-{ "type": "Feature", "properties": { "s": 500020999, "e": 7707208812, "eid": 41147, "rid": 41019611, "name": "福强路", "road_type": "primary", "dir": 1, "memo": null }, "geometry": { "type": "LineString", "coordinates": [ [ 114.0629848, 22.529529 ], [ 114.0629879, 22.5293539 ] ] } },
-{ "type": "Feature", "properties": { "s": 7707208812, "e": 7640452829, "eid": 41148, "rid": 41019611, "name": "福强路", "road_type": "primary", "dir": 1, "memo": "last step" }, "geometry": { "type": "LineString", "coordinates": [ [ 114.0629879, 22.5293539 ], [ 114.062991016718641, 22.52921556564154 ] ] } }
-]
-}
-
+{'status': 99,
+ 'probs': {'prob': 0.07239983608324635,
+  'norm_prob': 0.7690839679357104,
+  'dist_prob': 0.886956440947009,
+  'trans_prob': 0.8333451587857633,
+  'dir_prob': 0.9395559018614211,
+  'status': 0},
+ 'eids': [8951,   1403,   1404,   1405,   1406,   1407,   1484,   1482, 1483,   1466, 118095, 118096,   1467,   1468,   1469,   1470, 1471,   1472,   1473,   1474, 117158, 122957, 122958, 117450, 117451, 117452, 117453, 122849, 122850, 117121, 117122,  96813, 96814,  96815,  96816,  96817,  96789, 122869,    771,  23786, 23808, 122874, 117741, 117742, 117743, 123309, 123310, 123311, 123312, 123313, 123314, 123315, 123316, 123317, 123318,   1536, 76069,   1537, 117105,    650,    651,    652,    653,    654, 655,    656,    657,    658, 124425, 124426, 124427, 124428, 118053, 118054,   1582,   1581,   1580,   1420,    531,   1645,  139265],
+ 'step_0': [[114.0421798,  22.5309295], [114.0425387,  22.530972 ]],
+ 'step_n': [[114.0630578,  22.5293481], [114.0630362,  22.5293596], [114.0628913,  22.5293602]])}
 ```
 
 可视化效果如下
-![效果示意图](.fig/map_matching_futian.png)
+
+![](.fig/map_matching_futian.png)
 
 ## 环境安装
 
@@ -88,7 +88,7 @@ path, info = matcher.matching(traj, plot=True, top_k=5)
 ```bash
 conda create -n geo python=3.7
 conda activate geo
-conda install geopandas==0.12.1
+conda install -c conda-forge geopandas==0.12.1
 ```
 
 ## Ref

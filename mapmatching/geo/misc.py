@@ -60,16 +60,6 @@ def geom_series_distance(col1, col2, in_crs=4326, out_crs=900913):
     return a.distance(b)
 
 
-def cal_points_seq_distance(points, xy=True):
-    if xy:
-        points = points.copy()
-        points = points[:, ::-1]
-    
-    dist_np = haversine_vector(points[:-1], points[1:], unit=Unit.METERS)
-    
-    return dist_np.sum()
-
-
 def merge_coords_intervals_on_same_edge(step_0:np.ndarray, step_n:np.ndarray):
     if step_0 is None:
         # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后

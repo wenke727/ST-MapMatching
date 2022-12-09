@@ -1,4 +1,3 @@
-#%%
 import geopandas as gpd
 from sqlalchemy import create_engine
 
@@ -6,9 +5,7 @@ IP = "192.168.135.16"
 connect= f"postgresql://postgres:pcl_A5A@{IP}:5432/gis"
 ENGINE   = create_engine(connect)
 
-#%%
 
-"""" io """
 def gdf_to_postgis(gdf, name, engine=ENGINE, if_exists='replace', *args, **kwargs):
     """Save the GeoDataFrame to the db
 

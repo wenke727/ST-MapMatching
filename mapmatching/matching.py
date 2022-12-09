@@ -2,10 +2,9 @@ import os
 os.environ["USE_PYGEOS"] = "1"
 
 import numpy as np
-import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from shapely.geometry import Point
+from shapely.geometry import LineString
 
 from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
@@ -13,19 +12,18 @@ from .geo.douglasPeucker import simplify_trajetory_points
 
 from .osmnet.build_graph import build_geograph
 
+from .match.status import STATUS
 from .match.io import load_points
-from .match.code import STATUS
 from .match.postprocess import get_path
 from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
-from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
-from .match.visualization import matching_debug_level, plot_matching, plot_matching_result
 from .match.projection import project_traj_points_to_network
+from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
+from .match.visualization import matching_debug_level, plot_matching_result
 
-from .utils.timer import Timer, timeit
+from .utils.timer import timeit
 from .utils.logger_helper import make_logger
-from .utils.serialization import save_checkpoint
 from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
 
@@ -62,10 +60,10 @@ class ST_Matching():
         self.route_planning_max_search_dist = max_search_dist
 
     @timeit
-    def matching(self, traj, top_k=None, dir_trans=False, beam_search=True, 
-                       simplify=True, tolerance=10, plot=False, save_fn=None, 
-                       debug_in_levels=False, details=False): 
-        info = {'status': STATUS.UNKNOWN}
+    def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
+                 simplify=True, tolerance=10, plot=False, save_fn=None,
+                 debug_in_levels=False, details=False):
+        res = {'status': STATUS.UNKNOWN}
         
         # simplify trajectory: (tolerance, 10 meters)
         if simplify:
@@ -79,20 +77,21 @@ class ST_Matching():
             points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
         
         # is_valid
-        s, route = self._is_valid(traj, cands, info)
+        s, route = self._is_valid(traj, cands, res)
         if not s:
-            return route, info
+            return res
 
         # spatial analysis
-        rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=info)
-        route, conns, steps = get_path(self.net, traj, rList, graph, cands, metric=info)
-    
+        res['probs'] = {}
+        rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
+        match_res, steps = get_path(self.net, traj, rList, graph, cands, metric=res['probs'])
+        res.update(match_res)
+
         if details:
             _dict = {'cands': cands,'rList': rList, 'graph': graph, 'route': route, "steps": steps}
-            info.update(_dict)
+            res['details'] = _dict
 
         if plot or save_fn:
-            # ax = plot_matching(self.net, traj, cands, route, satellite=False, save_fn=save_fn)
             fig, ax = plot_matching_result(traj, route, self.net)
             if simplify:
                 ori_traj.plot(ax=ax, color='gray', alpha=.3)
@@ -105,9 +104,9 @@ class ST_Matching():
         if debug_in_levels:
             self.matching_debug(traj, graph)
         
-        return route, info
+        return res
 
-    def _is_valid(self, traj, cands, info):
+    def _is_valid(self, traj, cands, info, eps = 1e-7):
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
@@ -116,11 +115,12 @@ class ST_Matching():
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
-            route = self.net.get_edge(eid, reset_index=True)
-            route.loc[:, 'geometry'] = Point(*cands.iloc[0].projection)
+            coord = cands.iloc[0].projection
+            res = {'eids': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
+            info.update(res)
             info['status'] = STATUS.ONE_POINT
             
-            return False, route
+            return False, res
         
         return True, None
 
@@ -180,7 +180,6 @@ class ST_Matching():
         """
         graph = gpd.GeoDataFrame(graph)
         graph.geometry = graph.whole_path
-        # graph.set_geometry('whole_path', inplace=True)
 
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values
         for layer in layer_ids:
@@ -189,13 +188,14 @@ class ST_Matching():
         
         return
 
-    def plot_result(self, traj, route, info=None):
-        fig, ax = plot_matching_result(traj, route, self.net)
+    def plot_result(self, traj, info):
+        path = self.transform_res_2_path(info)
+        fig, ax = plot_matching_result(traj, path, self.net)
         if not info:
             return fig, ax
 
         text = []
-        for key, val in info.items():
+        for key, val in info['probs'].items():
             if isinstance(val, float):
                 _str = f"{key}: {val * 100: .2f} %"
             else:
@@ -206,6 +206,17 @@ class ST_Matching():
         ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text))
 
         return fig, ax
+
+    def transform_res_2_path(self, res):
+        path = self.net.get_edge(res['eids'], reset_index=True)
+        path.loc[0, 'geometry'] = LineString(res['step_0'])
+        if 'step_n' in res:
+            n = path.shape[0] - 1
+            path.loc[n, 'geometry'] = LineString(res['step_n'])
+        
+        path = path[~path.geometry.is_empty]
+
+        return path
 
     def get_points(self, traj, ids):
         return NotImplementedError

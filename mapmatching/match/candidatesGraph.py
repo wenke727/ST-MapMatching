@@ -3,10 +3,12 @@ import pandas as pd
 from haversine import haversine_vector, Unit
 
 from ..utils import timeit
+from .status import CANDS_EDGE_TYPE
 from ..geo.azimuth import azimuthAngle_vector
 
 
 def _cal_traj_params(points, move_dir=True):
+    # from ..geo.misc import cal_points_geom_seq_distacne
     coords = points.geometry.apply(lambda x: [x.y, x.x]).values.tolist()
     coords = np.array(coords)
 
@@ -28,18 +30,17 @@ def _cal_traj_params(points, move_dir=True):
 
 def _identify_edge_flag(gt):
     # (src, dst) on the same edge
-    # flag: 0 od 不一样；1 od 位于同一条edge上，但起点相对终点位置偏前；2 相对偏后
-    gt.loc[:, 'flag'] = 0
+    gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
     cond = (gt.dist - gt.first_step_len) < gt.last_step_len
 
     same_edge_normal = same_edge & cond
-    gt.loc[same_edge_normal, 'flag'] = 1
+    gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
     gt.loc[same_edge_normal, ['src', 'dst']] = gt.loc[same_edge_normal, ['dst', 'src']].values
 
     same_edge_revert = same_edge & (~cond)
-    gt.loc[same_edge_revert, 'flag'] = 2
+    gt.loc[same_edge_revert, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_LAST
 
     return gt
 
@@ -62,29 +63,32 @@ def construct_graph( points,
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
     """
     layer_ids = np.sort(cands.pid.unique())
-    prev_layer_dict = {cur: layer_ids[i] for i, cur in enumerate(layer_ids[1:]) }
+    prev_layer_dict = {cur: layer_ids[i]
+                       for i, cur in enumerate(layer_ids[1:])}
     prev_layer_dict[layer_ids[0]] = -1
 
     # left
     left = cands[common_attrs + left_attrs]
     left.loc[:, 'mgd'] = left.pid
-    
+
     # right
     right = cands[common_attrs + right_attrs]
-    right.loc[:, 'mgd'] = right.pid.apply(lambda x: prev_layer_dict[x])
+    right.loc[:, 'mgd'] = right.pid.apply(
+        lambda x: prev_layer_dict[x])
     right.query("mgd >= 0", inplace=True)
-    
-    # Cartesian product, 50%+ speed up
+
+    # Cartesian product
     gt = left.merge(right, on='mgd', suffixes=["_0", '_1'])\
              .drop(columns='mgd')\
              .reset_index(drop=True)\
              .rename(columns=rename_dict)
-    
+
     _identify_edge_flag(gt)
 
-    # FIXME There is a situation where the node does not match, 
-    # the current strategy is to ignore it, and there is a problem of order
-    traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
+    # FIXME There is a situation where the node does not match,             
+    # the current strategy is to ignore it, and there is a problem of the order
+    traj_info = _cal_traj_params(
+        points.loc[cands.pid.unique()], move_dir=dir_trans)
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
     gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
     if gt_keys:

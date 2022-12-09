@@ -5,6 +5,7 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
+from ..utils.timer import timeit
 from ..graph import GeoDigraph
 from .candidatesGraph import construct_graph
 
@@ -110,7 +111,7 @@ def cal_trans_prob(gt, geometry, dir_trans):
     return gt
 
 
-# @timeit
+@timeit
 def analyse_spatial_info(geograph: GeoDigraph,
                          points: GeoDataFrame,
                          cands: GeoDataFrame,

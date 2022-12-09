@@ -2,7 +2,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import LineString
 
-from .code import STATUS
+from .status import STATUS
 from ..graph import GeoDigraph
 from ..geo.misc import merge_coords_intervals_on_same_edge
 
@@ -12,7 +12,6 @@ def get_path(net:GeoDigraph,
              rList:gpd.GeoDataFrame, 
              graph:gpd.GeoDataFrame, 
              cands:gpd.GeoDataFrame,
-             connector:bool = False,
              metric = {},
              prob_thres = .8
              ):
@@ -34,57 +33,51 @@ def get_path(net:GeoDigraph,
        |  1 |     1 | 17916 |  8169270272 |  2376751183 |
     """ 
     steps = rList.copy()
-    connectors = get_connectors(traj, path) if connector else None
     steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
-    steps = steps.rename(columns={'pid':'pid_0', 'eid':'eid_0'})\
-                 .merge(
-                    graph[['path', 'dist_prob', 'trans_prob']], 
-                    left_on=['pid_0', 'eid_0', 'eid_1'], right_index=True)
+    idxs = steps[['pid', 'eid', 'eid_1']].values[:-1].tolist()
+    steps = graph.loc[idxs, ['path', 'dist_prob', 'trans_prob']].reset_index()
 
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.path]) if x.path else [x.eid_0]
     eids = np.concatenate(steps.apply(extract_eids, axis=1))
     eids = np.append(eids, [steps.iloc[-1].eid_1])
     keep_cond = np.append([True], eids[:-1] != eids[1:])
-    eids_lst = eids[keep_cond]
+    eids_lst = eids[keep_cond].tolist()
 
-    path = net.get_edge(eids_lst, reset_index=True)
+    res = {'eids': eids_lst}
     step_0, step_n = _get_first_and_last_step(cands, rList)
 
     # Case: one step
-    if path.shape[0] == 1:
-        coords = merge_coords_intervals_on_same_edge(step_0, step_n)
-        path.loc[0, 'geometry'] = LineString(coords)    
-        metric['status'] = STATUS.SAME_LINK
-        return path, connectors, None
+    if len(eids_lst) == 1:
+        res['step_0'] = merge_coords_intervals_on_same_edge(step_0, step_n).tolist()
+        if metric.get('prob', 1) < prob_thres:
+            metric['status'] = STATUS.FAILED
+        else:
+            metric['status'] = STATUS.SAME_LINK 
+            
+        return res, None
 
     # update first/last step 
-    n = path.shape[0] - 1
+    n = len(eids_lst) - 1
     assert n > 0, "Check od list"
-    path.loc[0, 'geometry'] = LineString(step_0)
-    path.loc[n, 'geometry'] = LineString(step_n)
-    path.loc[0, 'memo'] = 'first step'
-    path.loc[n, 'memo'] = 'last step'
-    
-    # filter empty geometry
-    path = path[~path.geometry.is_empty]
+    res['step_0'] = step_0.tolist()
+    res['step_n'] = step_n.tolist()
 
     # update metric
     coef = 1 / len(steps.dist_prob)
     dist_prob = np.prod(steps.dist_prob)
     trans_prob = np.prod(steps.trans_prob)
-    normal_prob, dist_prob, trans_prob = np.power([metric['prob'], dist_prob, trans_prob], coef)
-
-    metric["normal_prob"] = normal_prob
-    metric["trans_prob"] = trans_prob
-    metric["dist_prob"] = dist_prob
+    metric["norm_prob"], metric["dist_prob"], metric["trans_prob"] = \
+        np.power([metric['prob'], dist_prob, trans_prob], coef)
     if "dir_prob" in list(graph):
         metric["dir_prob"] = metric["trans_prob"] / metric["dist_prob"]
-    if trans_prob < prob_thres:
+
+    # status
+    if metric["trans_prob"] < prob_thres:
         metric['status'] = STATUS.FAILED
     else:
         metric['status'] = STATUS.SUCCESS
             
-    return path, connectors, steps
+    return res, steps
 
 
 def _get_first_and_last_step(cands, rList):

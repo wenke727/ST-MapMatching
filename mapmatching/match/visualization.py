@@ -9,22 +9,6 @@ from shapely.geometry import box
 from tilemap import plot_geodata, add_basemap
 
 
-def plot_matching_result(traj_points, path):
-    fig, ax = plot_geodata(path, color='r', tile_alpha=.7,
-                           label='Traj', reset_extent=False, zorder=3, linestyle=":")
-    traj_points.plot(ax=ax, label='Panos', zorder=2)
-    traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*")
-
-    x0, x1, y0, y1 = ax.axis()
-    zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})
-    net.df_edges.sjoin(zones, how="inner", predicate='intersects')\
-                .plot(ax=ax, color='black', label='roads', alpha=.4, zorder=2, linewidth=1)
-    ax.legend()
-    plt.close()
-
-    return fig
-
-
 def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=None, legend=True, scale=.9, factor=4):
     """Plot the matching situation of one pair of od.
 
@@ -162,7 +146,7 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
     
     ax.axis('off')
     if column is None:
-        plt.legend(loc='best')
+        plt.legend(loc=1)
     
     if save_fn is not None:
         plt.tight_layout()
@@ -194,12 +178,7 @@ def plot_matching_result(traj_points, path, net, column=None, categorical=True):
     x0, x1, y0, y1 = ax.axis()
     zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})
     net.df_edges.sjoin(zones, how="inner", predicate='intersects')\
-                .plot(ax=ax, color='black', label='roads', alpha=.4, zorder=2, linewidth=1)
-    ax.legend()
+                .plot(ax=ax, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
+    ax.legend(loc=1)
 
     return fig, ax
-
-
-if __name__ == "__main__":
-    matching_debug_level(geograph, points, gt.loc[0], 0)
-

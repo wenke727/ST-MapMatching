@@ -28,6 +28,7 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     times = []
     timer = Timer()
     
+    # TODO 使用回溯的方式，测试下是够有性能上的提升
     for idx, lvl in enumerate(layer_ids[:-1]):
         df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
         prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
@@ -53,8 +54,8 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
         # post-process
         prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
         new_path = _df[['eid_1', "eid_0"]].set_index("eid_1")\
-                        .apply(lambda x: path[x.eid_0] + [(layer_ids[idx+1], x.name)], axis=1)\
-                        .to_dict()
+                                          .apply(lambda x: path[x.eid_0] + [(layer_ids[idx+1], x.name)], axis=1)\
+                                          .to_dict()
         
         path = new_path
         prev_states = list(_df.eid_1.unique())
@@ -64,13 +65,13 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     end_state = max(f_score[-1] ,key=f_score[-1].get)
     end_prob = f_score[-1][end_state]
     
-    rList = path[end_state]
-    rList = cands.set_index(['pid', 'eid']).loc[rList][[ 'src', 'dst']].reset_index()
+    rList = cands.set_index(['pid', 'eid']).loc[path[end_state], [ 'src', 'dst']].reset_index()
     
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
     _log = f"Route planning time cost: {np.sum(times):.3f} s, trim ratio: {(1 - ratio)*100:.1f} %"
-    getattr(logger, level)(_log)
+    print(_log)
+    # getattr(logger, level)(_log)
     
     return end_prob, rList, gt_beam
 

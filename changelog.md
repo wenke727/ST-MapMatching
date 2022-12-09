@@ -12,11 +12,33 @@
 
 ### Added
 
-- `mapmatching/geo/misc.py`
+- `CANDS_EDGE_TYPE`: NORMAL、SAME_SRC_FIRST、SAME_SRC_LAST
+
+### Changed
+
+- get_k_neigbor_edges
+  性能优化，直接使用 index 获取 DataFrame，而非使用 merge，节省时间级别为`十毫秒`级别
+- `postprocess`
+  - 性能优化，直接使用 index 获取 DataFrame，而非使用 merge
+  - 改变输出结果，将原来输出 edge 的 geodataframe 变更为 {eids， step_0， step_n， prob}
+- ST_Matching
+  - 适配 matching 输出的变化
+  - `transform_res_2_path`
+
+
+## [V1.2.7] - 2022-11-30
+
+### Added
+
+- `mapmatching/geo/haversineDistance.py`
 
   cal_points_seq_distance 计算坐标序列的长度
 
   merge_coords_intervals_on_same_edge 合并坐标序列区间
+
+- match
+  - matching 部分代码子函数化
+  - plot_result 增加概率展示信息
 
 ### Changed
 
@@ -28,11 +50,20 @@
 
 - match
 
-  - postprocess
-
-    修改逻辑
-
   - matching 部分代码子函数化
+
+    - plot_result 增加展示
+
+  - postprocess.get_path
+
+    修改 `eids_lst` 的计算逻辑以及去重逻辑
+
+    增加 `dir_prob` 概率计算模块
+
+  - spatialAnalysis
+
+    - merge_steps ，完善 flag==1 情况下的 coords 的计算方式
+    - cal_dist_prob，完善 flag==1 情况下，dist_prob的计算方式
 
 
 ## [V1.2.6] - 2022-11-30

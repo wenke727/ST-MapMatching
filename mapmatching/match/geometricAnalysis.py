@@ -4,12 +4,9 @@ import geopandas as gpd
 from loguru import logger
 from shapely.geometry import box
 
-from ..utils import timeit
+from ..utils import timeit, Timer
 from ..geo.misc import geom_series_distance
 from ..geo.pointToLine import project_point_to_polyline
-
-import warnings
-warnings.filterwarnings('ignore')
 
 
 def _plot_candidates(points, edges, match_res):
@@ -28,7 +25,7 @@ def _plot_candidates(points, edges, match_res):
 def _filter_candidate(df: gpd.GeoDataFrame,
                       top_k: int = 5,
                       pid: str = 'pid',
-                      edge_keys: list = ['way_id', 'dir'],
+                      edge_keys: list = ['way_id'],
                       level='debug'
                       ):
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
@@ -37,7 +34,7 @@ def _filter_candidate(df: gpd.GeoDataFrame,
         df (gpd.GeoDataFrame): df candidates.
         top_k (int, optional): _description_. Defaults to 5.
         pid (str, optional): _description_. Defaults to 'pid'.
-        edge_keys (list, optional): The keys of edge ,which help to filter the edges which belong to the same road. Defaults to ['way_id', 'dir'].
+        edge_keys (list, optional): The keys of edge, which help to filter the edges which belong to the same road. Defaults to ['way_id'].
 
     Returns:
         gpd.GeoDataFrame: The filtered candidates.
@@ -55,11 +52,12 @@ def _filter_candidate(df: gpd.GeoDataFrame,
     return df
 
 
+@timeit
 def get_k_neigbor_edges(points: gpd.GeoDataFrame,
                         edges: gpd.GeoDataFrame,
                         top_k: int = 5,
                         radius: float = 50,
-                        edge_keys: list = ['way_id', 'dir'],
+                        edge_keys: list = ['way_id'],
                         edge_attrs: list = ['projection', 'src', 'dst', 'way_id', 'dir', 'geometry'],
                         pid: str = 'pid',
                         eid: str = 'eid',
@@ -76,8 +74,8 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
         edges (gpd.GeoDataFrame): _description_
         top_k (int, optional): _description_. Defaults to 5.
         radius (float, optional): _description_. Defaults to 50.
-        edge_keys (list, optional): _description_. Defaults to ['way_id', 'dir'].
-        edge_attrs (list, optional): _description_. Defaults to ['src', 'dst', 'way_id', 'dir', 'geometry'].
+        edge_keys (list, optional): _description_. Defaults to ['way_id'].
+        edge_attrs (list, optional): _description_. Defaults to ['src', 'dst', 'way_id', 'geometry'].
         pid (str, optional): _description_. Defaults to 'pid'.
         eid (str, optional): _description_. Defaults to 'eid'.
         predicate (str, optional): _description_. Defaults to 'intersects'.
@@ -106,6 +104,10 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     """
     if ll:
         radius *= ll_to_utm_dis_factor
+    
+    # time_lst = {}
+    # timer = Timer()
+    # timer.start()
 
     # check edge_attrs
     _edge_attrs = edge_attrs[:]
@@ -113,28 +115,36 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     if len(edge_attrs) != len(_edge_attrs):
         logger.warning(f"Check edge attrs, only exists: {edge_attrs}")
     
-    # The first subarray contains input geometry integer indexes.
-    # The second subarray contains tree geometry integer indexes.
+    # time_lst['pre query'] = timer.stop()
+    # timer.start()
+    # query
     boxes = points.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
     cands = edges.sindex.query_bulk(boxes, predicate=predicate)
-    if len(cands[0]) == 0:
+    cands_point_idxs, cands_edge_idxs = points.index[cands[0]], edges.iloc[cands[1]].index
+    if len(cands_point_idxs) == 0:
         return None
     
-    order_2_idx = {i: idx for i, idx in enumerate(points.index)}
-    df_cand = pd.DataFrame.from_dict({pid: [order_2_idx[i] for i in cands[0]], 
-                                      eid: edges.iloc[cands[1]].index})
-    df_cand = df_cand.merge(points['geometry'], left_on=pid, right_index=True)\
-                     .merge(edges[edge_attrs], left_on=eid, right_index=True)\
-                     .rename(columns={'geometry_x': 'point_geom', 'geometry_y': 'edge_geom'})\
-                     .sort_index()
-    
+    # time_lst['query'] = timer.stop()
+    # timer.start()
+    _df_points = points.loc[cands_point_idxs, ['geometry']]\
+                       .reset_index().rename(columns={'index':'pid', 'geometry': 'point_geom'})
+    _df_edges  = edges.loc[cands_edge_idxs, edge_attrs]\
+                       .reset_index().rename(columns={'index':'eid', 'geometry': 'edge_geom'})
+    df_cand = pd.concat([_df_points, _df_edges], axis=1)
+
+    # time_lst['post query'] = timer.stop()
+    # timer.start()
     if ll:
         df_cand.loc[:, 'dist_p2c'] = geom_series_distance(df_cand.point_geom, df_cand.edge_geom, crs_wgs, crs_prj)
     else:
         df_cand.loc[:, 'dist_p2c'] = gpd.GeoSeries(df_cand.point_geom).distance(gpd.GeoSeries(df_cand.edge_geom))
-        
+
+    # time_lst['cal dist'] = timer.stop()
+    # timer.start()
     _df_cands = _filter_candidate(df_cand, top_k, pid, edge_keys)
     
+    # time_lst['filter'] = timer.stop()
+    # print(time_lst)
     if _df_cands is None:
         logger.warning(f"Trajectory has no matching candidates")
         return None
@@ -177,7 +187,7 @@ def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 's
 
     return res
 
-@timeit
+
 def analyse_geometric_info(points: gpd.GeoDataFrame,
                            edges: gpd.GeoDataFrame,
                            top_k: int = 5,
@@ -193,6 +203,7 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            crs_wgs: int = 4326,
                            crs_prj: int = 900913,
                            ):
+    # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
     cands = get_k_neigbor_edges(points, edges, top_k, radius, edge_keys,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)

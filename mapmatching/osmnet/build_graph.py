@@ -16,6 +16,7 @@ def load_geograph(ckpt):
 
 
 def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_db=False, *args, **kwargs):
+    # TODO coord sys： wgs, gcj
     if ckpt:
         return load_geograph(ckpt)
 
