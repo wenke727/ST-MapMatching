@@ -172,8 +172,8 @@ def plot_matching_result(traj_points, path, net, column=None, categorical=True):
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
-    
-    path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.7)
+    if path is not None:
+        path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.7)
 
     x0, x1, y0, y1 = ax.axis()
     zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})

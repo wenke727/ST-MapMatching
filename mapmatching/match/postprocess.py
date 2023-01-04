@@ -48,7 +48,8 @@ def get_path(net:GeoDigraph,
 
     # Case: one step
     if len(eids_lst) == 1:
-        res['step_0'] = merge_coords_intervals_on_same_edge(step_0, step_n).tolist()
+        tmp = merge_coords_intervals_on_same_edge(step_0, step_n)
+        res['step_0'] = tmp.tolist() if tmp is not None else []
         if metric.get('prob', 1) < prob_thres:
             metric['status'] = STATUS.FAILED
         else:
@@ -59,8 +60,8 @@ def get_path(net:GeoDigraph,
     # update first/last step 
     n = len(eids_lst) - 1
     assert n > 0, "Check od list"
-    res['step_0'] = step_0.tolist()
-    res['step_n'] = step_n.tolist()
+    res['step_0'] = step_0.tolist() if step_0 is not None else []
+    res['step_n'] = step_n.tolist() if step_n is not None else []
 
     # update metric
     coef = 1 / len(steps.dist_prob)

@@ -4,9 +4,17 @@
 
 - [x] 自动化测试脚本，包括`性能`和`精度`
 - [x] lcss 轨迹相似度评估函数
+- [x] matching 轨迹压缩
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
-- [ ] matching 轨迹压缩
+
+## [V1.2.8] - 2023-1-4
+
+### Added
+
+- graph 增加 level 信息
+- `check_multi_edges` 检测 及 后处理
+- `setting`增加 osm_highway_type_dict, link_type_level_dict 
 
 ## [V1.2.7] - 2022-11-30
 
@@ -20,11 +28,10 @@
   性能优化，直接使用 index 获取 DataFrame，而非使用 merge，节省时间级别为`十毫秒`级别
 - `postprocess`
   - 性能优化，直接使用 index 获取 DataFrame，而非使用 merge
-  - 改变输出结果，将原来输出 edge 的 geodataframe 变更为 {eids， step_0， step_n， prob}
+  - 轨迹压缩，改变输出结果，将原来输出 edge 的 geodataframe 变更为 {eids， step_0， step_n， prob}
 - ST_Matching
   - 适配 matching 输出的变化
   - `transform_res_2_path`
-
 
 ## [V1.2.7] - 2022-11-30
 

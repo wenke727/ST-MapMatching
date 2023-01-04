@@ -12,7 +12,7 @@ def add_datetime_attr(nodes):
     return nodes
 
 def SET_PANDAS_LOG_FORMET():
-    pd.set_option('display.max_rows', 20)
+    pd.set_option('display.max_rows', 50)
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width', 5000)
 

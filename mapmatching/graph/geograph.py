@@ -11,6 +11,7 @@ from ..utils.serialization import save_checkpoint, load_checkpoint
 
 class GeoDigraph(Digraph):
     def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
+        # FIXME df_edges 存在多条边
         self.df_edges = df_edges
         self.df_nodes = df_nodes
         self.search_memo = {}
@@ -33,7 +34,6 @@ class GeoDigraph(Digraph):
                                     nodes_dist_memo=self.nodes_dist_memo
                                     )
 
-        
     def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):
         route = self.searcher.search(src, dst, max_steps, max_dist)
         
@@ -49,14 +49,12 @@ class GeoDigraph(Digraph):
         
         return route
 
-    
     def spatial_query(self, geofence, name='df_edges', predicate='intersects'):
         gdf = getattr(self, name)
         
         idxs = gdf.sindex.query(geofence, predicate=predicate)
         
         return gdf.iloc[idxs].index
-
 
     """ get attribute """
     def get_edge(self, eid, attrs=None, reset_index=False):
@@ -69,10 +67,8 @@ class GeoDigraph(Digraph):
         
         return res
 
-
     def get_node(self, nid, attrs=None, reset_index=False):
         return self._get_feature('df_nodes', nid, attrs, reset_index)
-
 
     def _get_feature(self, df_name, id, attrs=None, reset_index=False):
         """get edge by id.
@@ -107,7 +103,6 @@ class GeoDigraph(Digraph):
         
         return res
 
-
     """ transfrom """
     def transform_node_seq_to_edge_seq(self, node_lst:np.array, on:list=['src', 'dst'], key='eid'):
         if node_lst is None or len(node_lst) <= 1:
@@ -121,14 +116,12 @@ class GeoDigraph(Digraph):
 
         return eids
 
-
     def transform_edge_seq_to_polyline(self, eids):
         steps = self.get_edge(eids, attrs=['geometry'], reset_index=True)
         coords = np.concatenate(steps.geometry.apply(lambda x: x.coords), axis=0)
         
         return LineString(coords)           
            
-
     """ io """
     def to_postgis(self, name, nodes_attrs=['nid', 'x', 'y', 'traffic_signals', 'geometry']):
         from ..utils.db import gdf_to_postgis
@@ -143,7 +136,6 @@ class GeoDigraph(Digraph):
         gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
 
         return True
-
 
     def to_csv(self, name, folder = None):
         edge_fn = f'topo_osm_{name}_edge.csv'
@@ -166,10 +158,8 @@ class GeoDigraph(Digraph):
         
         return True
 
-
     def save_checkpoint(self, ckpt):
         return save_checkpoint(self, ckpt)
-
 
     def load_checkpoint(self, ckpt):
         from loguru import logger
@@ -179,6 +169,18 @@ class GeoDigraph(Digraph):
 
         return self
 
+    def add_node(self,):
+        return NotImplementedError
+    
+    def add_edge(self, start, end, length=None):
+        # TODO add edge
+        return super().add_edge(start, end, length)
+    
+    def remove_edge(self, start, end):
+        return super().remove_edge(start, end)
+    
+    def remove_node(self, node):
+        return NotImplementedError
 
 if __name__ == "__main__":
     network = GeoDigraph()

@@ -25,16 +25,14 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_d
     
     df_nodes, df_edges, df_ways = parse_xml_to_graph(xml_fn, *args, **kwargs)
     
-    attrs = ['highway', 'name', 'maxspeed', 'oneway', 'lanes']
+    attrs = ['name', 'level', 'highway', 'link', 'maxspeed', 'oneway', 'lanes']
     if way_info: 
         df_edges = df_edges.merge(df_ways[attrs], left_on='way_id', right_index=True)
         df_edges.rename(columns={'highway':'road_type'}, inplace=True)
-    
 
     graph = GeoDigraph(df_edges, df_nodes)
     
     return graph
-    
 
 if __name__ == "__main__":
     # new graph
@@ -44,10 +42,11 @@ if __name__ == "__main__":
     
     # load ckpt
     graph = build_geograph(ckpt=f'../../data/network/{name}_graph_pygeos.ckpt')
-    
     # check
     path = graph.search(src=7959990710, dst=499265789)
     graph.get_edge(path['path']).plot()
 
     # save to DB
     # graph.to_postgis(name)
+    
+    import networkx

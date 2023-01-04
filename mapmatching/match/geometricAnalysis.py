@@ -9,7 +9,7 @@ from ..geo.misc import geom_series_distance
 from ..geo.pointToLine import project_point_to_polyline
 
 
-def _plot_candidates(points, edges, match_res):
+def plot_candidates(points, edges, match_res):
     ax = edges.plot()
     points.plot(ax=ax)
 
@@ -208,10 +208,11 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
     
-    cands[point_to_line_attrs] = project_point_to_line_segment(
-        cands.point_geom, cands.edge_geom, point_to_line_attrs)
-    
-    cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+    if cands is not None:
+        cands[point_to_line_attrs] = project_point_to_line_segment(
+            cands.point_geom, cands.edge_geom, point_to_line_attrs)
+        
+        cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
     
     return cands
     
@@ -230,5 +231,5 @@ if __name__ == "__main__":
     
     # candidates
     res = get_k_neigbor_edges(points, edges, radius=2, top_k=2, ll=False, edge_keys=['way_id'])
-    _plot_candidates(points, edges, res)
+    plot_candidates(points, edges, res)
     

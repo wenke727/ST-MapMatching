@@ -2,7 +2,7 @@
 
 import numpy as np
 from haversine import haversine_vector, Unit
-from ..haversineDistance import cal_haversine_matrix
+from ..haversineDistance import haversine_matrix
 
 
 def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
@@ -23,7 +23,7 @@ def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
     n0 = len(array1)
     n1 = len(array2)
     
-    dist_matrix = cal_haversine_matrix(array1, array2, xy=True)
+    dist_matrix = haversine_matrix(array1, array2, xy=True)
     M = dist_matrix.copy()
     mask = M < eps
     M[mask] = True
@@ -61,7 +61,7 @@ def edr(array1, array2, eps):
     n0 = len(array1)
     n1 = len(array2)
     
-    dist_matrix = cal_haversine_matrix(array1, array2, xy=True)
+    dist_matrix = haversine_matrix(array1, array2, xy=True)
     M = dist_matrix.copy()
     mask = M < eps
     M[mask] = True
@@ -97,7 +97,7 @@ def erp(array1, array2, g):
     n1 = len(array2)
     C = np.zeros((n0 + 1, n1 + 1))
 
-    M = cal_haversine_matrix(array1, array2, xy=True)
+    M = haversine_matrix(array1, array2, xy=True)
 
     ref_1 = haversine_vector(array1[:, ::-1], g[::-1], unit=Unit.METERS)
     ref_2 = haversine_vector(array2[:, ::-1], g[::-1], unit=Unit.METERS)

@@ -4,7 +4,7 @@ from shapely.geometry import Point
 from haversine import haversine, haversine_vector, Unit
 
 
-def cal_haversine_matrix(array1, array2, xy=True, unit=Unit.METERS):
+def haversine_matrix(array1, array2, xy=True, unit=Unit.METERS):
     '''
     The exact same function as "haversine", except that this
     version replaces math functions with numpy functions.
@@ -119,4 +119,4 @@ def cal_points_geom_seq_distacne(geoms:gpd.GeoSeries):
 
 
 if __name__ == "__main__":
-    matrix = cal_haversine_matrix(traj_points, points_, xy=True)
+    matrix = haversine_matrix(traj_points, points_, xy=True)

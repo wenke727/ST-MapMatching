@@ -2,6 +2,7 @@ import os
 os.environ["USE_PYGEOS"] = "1"
 
 import numpy as np
+from copy import deepcopy
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import LineString
@@ -61,7 +62,7 @@ class ST_Matching():
 
     @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
-                 simplify=True, tolerance=10, plot=False, save_fn=None,
+                 simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False):
         res = {'status': STATUS.UNKNOWN}
         
@@ -85,6 +86,9 @@ class ST_Matching():
         res['probs'] = {}
         rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
         match_res, steps = get_path(self.net, traj, rList, graph, cands, metric=res['probs'])
+        if 'status' in res['probs']:
+            res['status'] = res['probs']['status']
+            del res['probs']['status']
         res.update(match_res)
 
         if details:
@@ -158,10 +162,10 @@ class ST_Matching():
     def project(self, traj_panos, path, keep_attrs=None):
         return project_traj_points_to_network(traj_panos, path, self.net, keep_attrs)
 
-    def load_points(self, fn, compress=False, dp_thres: int = None,
+    def load_points(self, fn, compress=False, tolerance: int = 10,
                     crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
         
-        traj, _ = load_points(fn, compress, dp_thres, crs, in_sys, out_sys)
+        traj, _ = load_points(fn, compress, tolerance, crs, in_sys, out_sys)
         
         return traj
 
@@ -189,13 +193,27 @@ class ST_Matching():
         return
 
     def plot_result(self, traj, info):
-        path = self.transform_res_2_path(info)
+        info = deepcopy(info)
+        if info['status'] == 3:
+            path = None
+        else:
+            path = self.transform_res_2_path(info)
+
         fig, ax = plot_matching_result(traj, path, self.net)
         if not info:
             return fig, ax
 
+        for att in ["eids", "step_0", "step_n", 'details']:
+            if att not in info:
+                continue
+            info.pop(att)
+
         text = []
-        for key, val in info['probs'].items():
+        if "probs" in info:
+            probs = info.pop('probs')
+            info.update(probs)
+        
+        for key, val in info.items():
             if isinstance(val, float):
                 _str = f"{key}: {val * 100: .2f} %"
             else:

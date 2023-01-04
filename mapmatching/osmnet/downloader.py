@@ -1,4 +1,3 @@
-
 import numpy as np
 from pathlib import Path
 
@@ -45,6 +44,7 @@ def download_osm_xml(fn, bbox, verbose=False):
     except:
         return False
 
+
 if __name__ == "__main__":
     import sys
     sys.path.append('..')
@@ -53,3 +53,8 @@ if __name__ == "__main__":
     download_osm_xml('../../cache/Futian.osm.xml', [114.03814, 22.51675, 114.06963, 22.56533])
     download_osm_xml('../../cache/Shenzhen.osm.xml', SZ_BBOX)
     download_osm_xml('../../cache/GBA.osm.xml', GBA_BBOX)
+    
+    proj_name = "GaoxinParkMiddle"
+    GaoxinParkMiddle_BBOX = [113.92517, 22.54057, 113.95619, 22.55917]
+    download_osm_xml(f'../../cache/{proj_name}.osm.xml', GaoxinParkMiddle_BBOX)
+    

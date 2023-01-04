@@ -82,6 +82,7 @@ def edge_parallel_offset(record:pd.Series, distance=1.25/110/1000, process_two_p
         return (p[0]-dxdy[0], p[1]-dxdy[1])
     
     try:
+        # shapely 2.0 以上，`[::-1]` 需删除
         offset_coords = geom.parallel_offset(distance, side='right').coords[::-1]
 
         ori_s, ori_e = geom.coords[0], geom.coords[-1]
