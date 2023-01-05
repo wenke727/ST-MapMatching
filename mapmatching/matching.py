@@ -10,6 +10,7 @@ from shapely.geometry import LineString
 from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
 from .geo.douglasPeucker import simplify_trajetory_points
+from .geo.metric.trajResample import resample_polyline_seq_to_point_seq, resample_point_seq
 
 from .osmnet.build_graph import build_geograph
 
@@ -63,10 +64,10 @@ class ST_Matching():
     @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=True, tolerance=5, plot=False, save_fn=None,
-                 debug_in_levels=False, details=False):
+                 debug_in_levels=False, details=False, eval=False):
         res = {'status': STATUS.UNKNOWN}
         
-        # simplify trajectory: (tolerance, 10 meters)
+        # simplify trajectory: (tolerance, 5 meters)
         if simplify:
             ori_traj = traj
             traj = traj.copy()
@@ -92,11 +93,16 @@ class ST_Matching():
         res.update(match_res)
 
         if details:
-            _dict = {'cands': cands,'rList': rList, 'graph': graph, 'route': route, "steps": steps}
+            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'geometry', 'first_step', 'last_step', 'dst', 'src', 'waypoints', 'path', 'dist', ]
+            print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
+            _dict = {'cands': cands, 'rList': rList, 'graph': graph[attrs], 'route': route, "steps": steps, "simplified_traj": traj}
             res['details'] = _dict
 
+        if route is None:
+            route = self.transform_res_2_path(res)
+
         if plot or save_fn:
-            fig, ax = plot_matching_result(traj, route, self.net)
+            fig, ax = self.plot_result(traj, res)
             if simplify:
                 ori_traj.plot(ax=ax, color='gray', alpha=.3)
                 traj.plot(ax=ax, color='yellow', alpha=.5)
@@ -140,11 +146,20 @@ class ST_Matching():
 
         return rList, graph
 
-    def eval(self, traj, path, eps=10, metric='lcss', g=None):
+    def eval(self, traj, res=None, path=None, resample=5, eps=10, metric='lcss', g=None):
+        assert res is not None or path is not None
         assert metric in ['lcss', 'edr', 'erp']
-        path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
-        traj_points = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
         
+        if path is None:
+            path = self.transform_res_2_path(res)
+        
+        if resample:
+            samples_1, path_points = resample_polyline_seq_to_point_seq(path.geometry, step=resample)
+            samples_2, traj_points = resample_point_seq(traj.geometry, step=resample)
+        else:
+            path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
+            traj_points = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
+            
         # FIXME 是否使用 轨迹节点 和 投影节点 作比较
         # projected_points = info['rList'][['pid', 'eid']].merge(info['cands'], on=['pid', 'eid'])
         # points = np.concatenate(projected_points.point_geom.apply(lambda x: x.coords[:]).values)
@@ -183,7 +198,7 @@ class ST_Matching():
             debug (bool, optional): [description]. Defaults to True.
         """
         graph = gpd.GeoDataFrame(graph)
-        graph.geometry = graph.whole_path
+        # graph.geometry = graph.whole_path
 
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values
         for layer in layer_ids:

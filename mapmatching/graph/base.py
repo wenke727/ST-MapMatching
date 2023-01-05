@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from collections import defaultdict
 
 class Node:
     """
@@ -59,6 +59,11 @@ class Digraph:
         self.edges  = {}
         self.nodes  = {}
         
+        self.eid_2_od = {}
+        self.od_2_eid = defaultdict(dict)
+        self.do_2_eid = defaultdict(dict)
+        self.max_eid = 0
+
         if edges is not None:
             self.build_graph(edges)
 
@@ -68,10 +73,8 @@ class Digraph:
         
         self.calculate_degree()
 
-
     def __str__(self):
         return ""
-
 
     def add_edge(self, start, end, length=None):
         for p in [start, end]:
@@ -82,11 +85,15 @@ class Digraph:
             
         self.graph[start][end] = length
         self.graph_r[end][start] = length
+        self.od_2_eid[start][end] = self.max_eid
+        self.do_2_eid[end][start] = self.max_eid
+        self.eid_2_od[self.max_eid] = (start, end)
+        self.max_eid += 1
+
         if length is not None:
             self.edges[(start, end)] = length
             
         pass
-
 
     def remove_edge(self, start, end):
         self.graph[start].remove(end)
@@ -97,7 +104,6 @@ class Digraph:
         if len(self.graph_r[end]) == 0:
             del self.graph_r[end]
         pass
-
 
     def build_graph(self, edges):
         for edge in edges:
@@ -113,14 +119,12 @@ class Digraph:
         
         return self.graph
 
-
     def clean_empty_set(self):
         for item in [self.graph_r, self.graph]:
             for i in list(item.keys()):
                 if len(item[i]) == 0:
                     del item[i]
         pass
-
 
     def calculate_degree(self,):
         self.clean_empty_set()
@@ -135,15 +139,12 @@ class Digraph:
         
         return self.degree
 
-
     def get_origin_point(self,):
         
         return self.calculate_degree().reset_index().query( "indegree == 0 and outdegree != 0" ).pid.values
 
-
     def cal_nodes_dist(self, src, dst):
         return NotImplementedError
-
     
     def _simpify(self):
         """
@@ -151,11 +152,9 @@ class Digraph:
         """
         return NotImplementedError
 
-
     def search(self, src, dst, *args, **kwargs):
         return NotImplementedError
     
-
     def _get_aux_nodes(self, exclude_list=None):
         if getattr(self, 'degree') is None:
             self.calculate_degree()

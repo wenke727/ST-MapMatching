@@ -6,8 +6,13 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import box
 
-from tilemap import plot_geodata, add_basemap
-
+try:
+    from tilemap import plot_geodata, add_basemap
+    TILEMAP_FLAG = True
+except:
+    def plot_geodata(data, *args, **kwargs):
+        return data.plot(*args, **kwargs)
+    TILEMAP_FLAG = False
 
 def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=None, legend=True, scale=.9, factor=4):
     """Plot the matching situation of one pair of od.
@@ -29,7 +34,8 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
     else:
         traj.plot(ax=ax, alpha=.6, color='white')
         ax.axis('off')
-        add_basemap(ax=ax, alpha=.5, reset_extent=False)
+        if TILEMAP_FLAG:
+            add_basemap(ax=ax, alpha=.5, reset_extent=False)
         # plot_geodata(traj, scale=scale, alpha=.6, color='white', ax=ax)
 
     # OD
@@ -120,7 +126,6 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
     _df = gpd.GeoDataFrame(pd.concat([traj, route]))
     if satellite:
         try:
-            from tilemap import plot_geodata
             _, ax = plot_geodata(_df, alpha=0, tile_alpha=.5, reset_extent=True)
             if column is not None:
                 traj.plot(alpha=0, column=column, categorical=categorical, legend=True, ax=ax)

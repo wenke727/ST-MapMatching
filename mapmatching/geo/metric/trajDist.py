@@ -38,7 +38,7 @@ def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
             else:
                 C[i][j] = max(C[i][j - 1], C[i - 1][j])
 
-    val = 1 - float(C[n0][n1]) / min([n0, n1])
+    val = float(C[n0][n1]) / min([n0, n1])
 
     return val
 

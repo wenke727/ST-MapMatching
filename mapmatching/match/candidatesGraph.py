@@ -33,7 +33,7 @@ def _identify_edge_flag(gt):
     gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
-    cond = (gt.dist - gt.first_step_len) < gt.last_step_len
+    cond = (gt['dist'] - gt['first_step_len']) < gt['last_step_len']
 
     same_edge_normal = same_edge & cond
     gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST

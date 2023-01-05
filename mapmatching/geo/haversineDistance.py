@@ -112,10 +112,13 @@ def cal_points_seq_distance(points:np.ndarray, xy=True):
     return dist_np, dist_np.sum()
 
 def cal_points_geom_seq_distacne(geoms:gpd.GeoSeries):
-    coords = np.concatenate(geoms.apply(lambda x: x.coords[:])).reshape(-1, 2)
+    coords = points_geoseries_2_ndarray(geoms)
     dist, total = cal_points_seq_distance(coords, xy=True)
 
-    return dist, total
+    return dist, coords
+
+def points_geoseries_2_ndarray(geoms:gpd.GeoSeries):
+    return np.concatenate(geoms.apply(lambda x: x.coords[:])).reshape(-1, 2)
 
 
 if __name__ == "__main__":

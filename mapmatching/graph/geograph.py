@@ -1,24 +1,28 @@
 import os
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
+# from networkx.classes import DiGraph
 
 from .base import Digraph
 from .astar import Astar, Bi_Astar
+from ..osmnet.twoway_edge import parallel_offset_edge
 from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
 class GeoDigraph(Digraph):
     def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
         # FIXME df_edges 存在多条边
+        # TODO eid 单调递增
         self.df_edges = df_edges
         self.df_nodes = df_nodes
         self.search_memo = {}
         self.nodes_dist_memo = {}
 
         if df_edges is not None and df_nodes is not None:
-            super().__init__(df_edges[['src', 'dst', 'dist']].values, 
+            super().__init__(df_edges[['src', 'dst', 'dist']].sort_index().values, 
                              df_nodes.to_dict(orient='index'), *args, **kwargs)
             self.init_searcher()
 
@@ -103,6 +107,25 @@ class GeoDigraph(Digraph):
         
         return res
 
+    def get_pred_edges(self, eid):
+        src, _ = self.eid_2_od[eid]
+        eids = self.do_2_eid[src].values()
+
+        return self.df_edges.loc[eids]
+
+    def get_succ_edges(self, eid):
+        _, dst = self.eid_2_od[eid]
+        eids = self.od_2_eid[dst].values()
+
+        return self.df_edges.loc[eids]
+
+    def get_way(self, way_id):
+        df = self.df_edges.query("way_id == @way_id")
+        if df.shape[0] == 0:
+            return None
+        
+        return df
+
     """ transfrom """
     def transform_node_seq_to_edge_seq(self, node_lst:np.array, on:list=['src', 'dst'], key='eid'):
         if node_lst is None or len(node_lst) <= 1:
@@ -169,18 +192,48 @@ class GeoDigraph(Digraph):
 
         return self
 
-    def add_node(self,):
-        return NotImplementedError
-    
     def add_edge(self, start, end, length=None):
-        # TODO add edge
+        # add edge to dataframe
         return super().add_edge(start, end, length)
     
+    def add_reverse_way(self, way_id, od_attrs=['src', 'dst'], offset=True):
+        df_edges_rev = self.df_edges.query('way_id == @way_id')
+        if df_edges_rev.shape[0] == 0:
+            print(f"check way id {way_id} exist or not.")
+            return False
+        if df_edges_rev.dir.nunique() >= 2:
+            return False
+
+        ring_mask = df_edges_rev.geometry.apply(lambda x: x.is_ring)
+        df_edges_rev = df_edges_rev[~ring_mask]
+
+        df_edges_rev.loc[:, 'dir']       = -1
+        # df_edges_rev.loc[:, 'way_id']   *= -1
+        df_edges_rev.loc[:, 'order']     = -df_edges_rev.order - 1
+        df_edges_rev.loc[:, 'geometry']  = df_edges_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
+        df_edges_rev.loc[:, 'waypoints'] = df_edges_rev.waypoints.apply(lambda x: x[::-1])
+        df_edges_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
+        eids = range(self.max_eid, self.max_eid + df_edges_rev.shape[0])
+        df_edges_rev.index = df_edges_rev.loc[:, 'eid'] = eids
+
+        df_edges = gpd.GeoDataFrame(pd.concat([self.df_edges, df_edges_rev]))
+        self.df_edges = df_edges
+
+        self.add_edges_from(df_edges_rev[['src', 'dst', 'dist']].values) 
+
+        # two ways offsets
+        idxs = self.df_edges.query('way_id == @way_id').index
+        self.df_edges.loc[idxs, 'geom_origin'] = self.df_edges.loc[idxs].geometry.copy()
+        self.df_edges.loc[idxs, 'geometry'] = self.df_edges.loc[idxs].apply( lambda x: parallel_offset_edge(x), axis=1 )
+
+        return True
+
+    def add_edges_from(self, edges):
+        return super().build_graph(edges)
+
     def remove_edge(self, start, end):
         return super().remove_edge(start, end)
-    
-    def remove_node(self, node):
-        return NotImplementedError
+
 
 if __name__ == "__main__":
     network = GeoDigraph()
@@ -189,7 +242,6 @@ if __name__ == "__main__":
     route = network.search(src=7959990710, dst=499265789)
     # route = network.search(src=7959602916, dst=7959590857)
 
-    from tilemap import plot_geodata
-    plot_geodata(network.df_edges.loc[route['path']])
+    network.df_edges.loc[route['path']].plot()
     
     network.transform_edge_seq_to_polyline(route['path'])

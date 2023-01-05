@@ -50,8 +50,7 @@ def merge_steps(gt):
 
 
 def _check_combine_steps(idx, traj, graph):
-    from tilemap import plot_geodata
-    fig, ax = plot_geodata(traj, color='r', reset_extent=False)
+    fig, ax = traj.plot(color='r')
 
     gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('whole_path')
     gdf.plot(ax=ax, color='blue', alpha=.5)
@@ -86,14 +85,16 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     idxs_flag_1 = gt.query("flag == 1").index
     idxs_flag_2 = gt.query("flag == 2").index
     gt.loc[idxs_flag_1, 'path'] = None
+    # gt.loc[idxs_flag_1, 'waypoints'] = [[] for i in range(len(idxs_flag_1))]
 
     # `w` is the shortest path from `ci-1` to `ci`
     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
-    gt.loc[idxs_flag_1, 'w'] = gt.last_step_len + gt.first_step_len - gt.cost
+    # od 位于同一条edge上，但起点相对终点位置偏前
+    gt.loc[idxs_flag_1, 'w'] = gt.last_step_len + gt.first_step_len - gt.dist
 
     # distance transmission probability
     dist = gt.d_euc / gt.w
-    dist[dist > 1] = 1 / dist[dist > 1]
+    dist[dist > 1] = 0.95 / dist[dist > 1] # 惩罚略短的路径
     gt.loc[:, 'dist_prob'] = dist
     gt.loc[idxs_flag_2, 'dist_prob'] *= .99
 

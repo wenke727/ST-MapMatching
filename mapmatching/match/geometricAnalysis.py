@@ -230,6 +230,6 @@ if __name__ == "__main__":
     points = gpd.GeoDataFrame({'geometry': [a, b]}, index=[1, 3])
     
     # candidates
-    res = get_k_neigbor_edges(points, edges, radius=2, top_k=2, ll=False, edge_keys=['way_id'])
-    plot_candidates(points, edges, res)
+    cands = get_k_neigbor_edges(points, edges, radius=2, top_k=2, ll=False, edge_keys=['way_id'])
+    plot_candidates(points, edges, cands)
     

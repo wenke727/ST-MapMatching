@@ -3,7 +3,6 @@ import numpy as np
 from loguru import logger
 from collections import deque
 from haversine import haversine, Unit
-from tilemap import plot_geodata
 
 # TODO: 寻找更快速的最短路算法
 
@@ -312,7 +311,7 @@ class Bi_Astar(PathPlanning):
     def plot_searching_boundary(self, path, network):
         points = set.union(set(self.visited_backward.keys()),
                            set(self.visited_forward.keys()))
-        _, ax = plot_geodata(network.df_nodes.loc[points], alpha=.2)
+        ax = network.df_nodes.loc[points].plot()
 
         eids = network.transform_node_seq_to_edge_seq(path)
         network.df_edges.loc[eids].plot(ax=ax, label='path')

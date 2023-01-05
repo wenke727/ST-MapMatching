@@ -45,7 +45,6 @@ class WayHandler(osmium.SimpleHandler):
         way['name'] = w.tags.get('name')
         self._extract_lane_info(w, way)
         self._extract_maxspeed_info(w, way)
-        # TODO check and update one way info by the `detour coefficient`
         self._extract_one_way_info(w, way)
         self.osm_way_dict[way['osm_way_id']] = way
 
@@ -64,6 +63,7 @@ class WayHandler(osmium.SimpleHandler):
 
 
     def _extract_one_way_info(self, w, way):
+        # TODO check and update one way info by the `detour coefficient`
         oneway_info = w.tags.get('oneway')
         way['oneway'] = None
         if oneway_info is not None:
@@ -75,7 +75,7 @@ class WayHandler(osmium.SimpleHandler):
                 way['oneway'] = True
                 way.is_reversed = True
             elif oneway_info in ['reversible', 'alternating']:
-                # todo: reversible, alternating: https://wiki.openstreetmap.org/wiki/Tag:oneway%3Dreversible
+                # reversible, alternating: https://wiki.openstreetmap.org/wiki/Tag:oneway%3Dreversible
                 way['oneway'] = False
             else:
                 logger.warning(f'new lane type detected at way {way.osm_way_id}, {oneway_info}')   
@@ -273,8 +273,7 @@ if __name__ == "__main__":
 
 
     """ _add_reverse_edge """
-    from tilemap import plot_geodata
-    plot_geodata(df_edges.query('way_id == 160131332'), reset_extent=False)
+    df_edges.query('way_id == 160131332').plot()
 
 
 # %%

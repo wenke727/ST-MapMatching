@@ -32,24 +32,24 @@ def add_reverse_edge(df_edges, df_ways, od_attrs=['src', 'dst'], offset=True):
     df_edges = pd.concat([df_edges, df_edge_rev]).reset_index(drop=True)
 
     if offset:
-        df_edges = _edge_offset(df_edges)
+        df_edges = edge_offset(df_edges)
     
     return df_edges
 
 
-def _edge_offset(df_edges):
+def edge_offset(df_edges):
     way_ids = df_edges.query("dir == -1").way_id.unique()
     _df_edges = df_edges.query("way_id in @way_ids")
     
     _df_edges.loc[:, 'geom_origin'] = _df_edges.geometry.copy()
     # df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
-    geom_offset = _df_edges.apply( lambda x: edge_parallel_offset(x), axis=1 )
+    geom_offset = _df_edges.apply( lambda x: parallel_offset_edge(x), axis=1 )
     _df_edges.loc[geom_offset.index, 'geometry'] = geom_offset
 
     return df_edges.query("way_id not in @way_ids").append(_df_edges)
 
 
-def edge_parallel_offset(record:pd.Series, distance=1.25/110/1000, process_two_point=True, keep_endpoint_pos=True, logger=None):
+def parallel_offset_edge(record:pd.Series, distance=1.25/110/1000, process_two_point=True, keep_endpoint_pos=True, logger=None):
     """Returns a LineString or MultiLineString geometry at a distance from the object on its right or its left side
 
     Args:

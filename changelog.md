@@ -8,6 +8,35 @@
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 
+## [V1.2.9] - 2023-1-5
+
+### Added
+
+- 使用地图匹配反向作用提升众包数据质量
+  - 拓扑关系纠正：增加反向车道
+
+- trajResample
+  - 轨迹等距离采样，使得新生成的坐标点序列的距离为等差数列，便于计算轨迹距离
+  - 支撑两种模式：resample_trajs_points_to_points 和 resample_trajs_polyline_to_points
+- Digraph
+  - `od_2_eid`, `eid_2_od`
+  - eid 递增
+- GeoGraph
+  - add_reverse_way
+  - `get_pred_edges`, `get_succ_edges`: 获取上下游的路段
+
+### Changed
+
+- Tilemap 所有接口统一挪到 visualization
+
+- `ST_Matching`中 eval 支持 轨迹的重采样
+
+- spatialAnalysis 中 `cal_dist_prob` 
+
+  纠正 gt 两个点位于同一个路段上，且 src 相对 dst 靠前情境下`w`的计算 `gt.last_step_len + gt.first_step_len - gt.dist`
+
+
+
 ## [V1.2.8] - 2023-1-4
 
 ### Added
