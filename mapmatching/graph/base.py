@@ -60,8 +60,6 @@ class Digraph:
         self.nodes  = {}
         
         self.eid_2_od = {}
-        self.od_2_eid = defaultdict(dict)
-        self.do_2_eid = defaultdict(dict)
         self.max_eid = 0
 
         if edges is not None:
@@ -83,10 +81,8 @@ class Digraph:
                     continue
                 g[p] = {}
             
-        self.graph[start][end] = length
-        self.graph_r[end][start] = length
-        self.od_2_eid[start][end] = self.max_eid
-        self.do_2_eid[end][start] = self.max_eid
+        self.graph[start][end] = {"eid": self.max_eid, "cost": length}
+        self.graph_r[end][start] = {"eid": self.max_eid, "cost": length}
         self.eid_2_od[self.max_eid] = (start, end)
         self.max_eid += 1
 
@@ -96,14 +92,30 @@ class Digraph:
         pass
 
     def remove_edge(self, start, end):
-        self.graph[start].remove(end)
+        eid = self.get_eid(start, end)
+        if eid is not None:
+            del self.eid_2_od[eid]
+        
+        del self.graph[start][end]
         if len(self.graph[start]) == 0:
             del self.graph[start]
         
-        self.graph_r[end].remove(start)
+        del self.graph_r[end][start]
         if len(self.graph_r[end]) == 0:
             del self.graph_r[end]
-        pass
+
+        return True
+
+    def get_eid(self, src, dst):
+        item = self.graph.get(src, None)
+        if item is None:
+            return None
+
+        r = item.get(dst, None)
+        if r is None:
+            return None
+        
+        return r.get('eid', None)
 
     def build_graph(self, edges):
         for edge in edges:

@@ -1,3 +1,4 @@
+#%%
 from mapmatching import build_geograph, ST_Matching
 from mapmatching.setting import DATA_FOLDER
 
@@ -20,8 +21,45 @@ matcher = ST_Matching(net=net)
 
 """step 3: 加载轨迹点集合，以打石一路为例"""
 traj = matcher.load_points("./data/trajs/traj_4.geojson")
-path, info = matcher.matching(traj, plot=True, top_k=5)
+res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, details=True)
 
-matcher.eval(traj, path, 20)
+"""step 4: eval"""
+matcher.eval(traj, res, eps=10)
 
-# matcher.project(traj, path)
+
+#%%
+def check_details():
+    import pandas as pd
+    pd.set_option('display.max_rows', 20)
+
+    r = res['details']
+    # r.keys() # 'cands', 'rList', 'graph', 'route', 'steps', 'simplified_traj'
+
+    # %%
+    r['cands']
+
+    # %%
+    r['rList']
+
+    #%%
+    r['steps']
+
+    #%%
+    r['path']
+
+    # %%
+    r['graph'][list(r['graph'])[:12]]
+
+    # %%
+    r['graph'][list(r['graph'])[12:]]
+
+    # %%
+    import geopandas as gpd
+    from tilemap import plot_geodata
+
+    i = 0
+    _, ax = plot_geodata(gpd.GeoDataFrame((r['graph'].iloc[[i]])))
+    gpd.GeoDataFrame((r['graph'].iloc[[i]])).set_geometry('path').plot(ax=ax, color='r')
+    r['simplified_traj'].plot(ax=ax, color='black')
+
+    # %%

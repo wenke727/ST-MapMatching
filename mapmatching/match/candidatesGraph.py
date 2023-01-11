@@ -61,6 +61,11 @@ def construct_graph( points,
     ):
     """
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
+
+    Parameters:
+        geometry = 除去 first step 和 last step 后，剩下的中间段
+        path = first_step + geometry + last_step
+
     """
     layer_ids = np.sort(cands.pid.unique())
     prev_layer_dict = {cur: layer_ids[i]

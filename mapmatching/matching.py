@@ -93,13 +93,19 @@ class ST_Matching():
         res.update(match_res)
 
         if details:
-            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'geometry', 'first_step', 'last_step', 'dst', 'src', 'waypoints', 'path', 'dist', ]
-            print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
-            _dict = {'cands': cands, 'rList': rList, 'graph': graph[attrs], 'route': route, "steps": steps, "simplified_traj": traj}
-            res['details'] = _dict
+            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'dst', 'src','first_step', 'geometry', 'last_step', 'path', 'epath', 'vpath','dist']
 
-        if route is None:
-            route = self.transform_res_2_path(res)
+            # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
+            attrs = [i for i in attrs if i in list(graph)]
+            _dict = {
+                "simplified_traj": traj,
+                'cands': cands, 
+                'rList': rList, 
+                "steps": steps, 
+                'graph': graph[attrs], 
+                'path': self.transform_res_2_path(res), 
+            }
+            res['details'] = _dict
 
         if plot or save_fn:
             fig, ax = self.plot_result(traj, res)
@@ -160,11 +166,6 @@ class ST_Matching():
             path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
             traj_points = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
             
-        # FIXME 是否使用 轨迹节点 和 投影节点 作比较
-        # projected_points = info['rList'][['pid', 'eid']].merge(info['cands'], on=['pid', 'eid'])
-        # points = np.concatenate(projected_points.point_geom.apply(lambda x: x.coords[:]).values)
-        # projections = np.concatenate(projected_points.projection.apply(lambda x: x).values).reshape((-1, 2))
-
         eval_funs = {
             'lcss': [lcss, (traj_points, path_points, eps)], 
             'edr': [edr, (traj_points, path_points, eps)], 

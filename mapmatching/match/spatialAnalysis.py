@@ -13,8 +13,17 @@ from ..geo.azimuth import cal_linestring_azimuth_cos_dist
 from ..geo.misc import merge_coords_intervals_on_same_edge
 
 
+def _check_combine_steps(idx, traj, graph):
+    fig, ax = traj.plot(color='r')
+
+    gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('whole_path')
+    gdf.plot(ax=ax, color='blue', alpha=.5)
+
+    _gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('geometry')
+    _gdf.plot(ax=ax, color='r', linestyle=':', alpha=.5)
+
 def merge_steps(gt):
-    # x.geometry + step_0 + step_n
+    # step_0 + x.geometry + step_n
     def get_coords(item):
         if item is None or len(item) == 0:
             return None
@@ -28,18 +37,14 @@ def merge_steps(gt):
             coords = merge_coords_intervals_on_same_edge(first, last)
             return LineString(coords)
 
-        if not x.geometry:
-            waypoints = None
-        else:
-            waypoints = x.geometry.coords[:]
-        
         lst = []
         if first is not None:
             lst.append(first)
-        if waypoints is not None:
-            lst.append(waypoints)
+        if x.geometry:
+            lst.append(x.geometry.coords[:])
         if last is not None:
             lst.append(last)
+
         if len(lst) == 0:
             return None
         
@@ -47,17 +52,6 @@ def merge_steps(gt):
         return polyline
     
     return gt.apply(helper, axis=1)
-
-
-def _check_combine_steps(idx, traj, graph):
-    fig, ax = traj.plot(color='r')
-
-    gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('whole_path')
-    gdf.plot(ax=ax, color='blue', alpha=.5)
-
-    _gdf = gpd.GeoDataFrame(graph).iloc[[idx]].set_geometry('geometry')
-    _gdf.plot(ax=ax, color='r', linestyle=':', alpha=.5)
-
 
 def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
     # Add: dir_prob
@@ -73,7 +67,6 @@ def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
 
     return gt
 
-
 def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000):
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
@@ -82,35 +75,34 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
                         net.search(x.dst, x.src, max_steps, max_dist),
                      axis=1, result_type='expand')
     gt.loc[:, list(paths)] = paths
-    idxs_flag_1 = gt.query("flag == 1").index
-    idxs_flag_2 = gt.query("flag == 2").index
-    gt.loc[idxs_flag_1, 'path'] = None
-    # gt.loc[idxs_flag_1, 'waypoints'] = [[] for i in range(len(idxs_flag_1))]
+    # od 位于同一条edge上，但起点相对终点位置偏前
+    flag_1_idxs = gt.query("flag == 1").index
+    flag_2_idxs = gt.query("flag == 2").index
+    gt.loc[flag_1_idxs, 'epath'] = None
+    gt.loc[flag_1_idxs, 'vpath'] = None
+    # gt.loc[idxs_flag_1, 'geometry'] = None # 为了显示效果
 
     # `w` is the shortest path from `ci-1` to `ci`
     gt.loc[:, 'w'] = gt.cost + gt.last_step_len + gt.first_step_len
-    # od 位于同一条edge上，但起点相对终点位置偏前
-    gt.loc[idxs_flag_1, 'w'] = gt.last_step_len + gt.first_step_len - gt.dist
+    gt.loc[flag_1_idxs, 'w'] = gt.last_step_len + gt.first_step_len - gt.dist
 
     # distance transmission probability
     dist = gt.d_euc / gt.w
     dist[dist > 1] = 0.95 / dist[dist > 1] # 惩罚略短的路径
     gt.loc[:, 'dist_prob'] = dist
-    gt.loc[idxs_flag_2, 'dist_prob'] *= .99
+    gt.loc[flag_2_idxs, 'dist_prob'] *= .99
 
     return gt
 
-
 def cal_trans_prob(gt, geometry, dir_trans):
     if dir_trans:
-        gt.loc[:, 'whole_path'] = merge_steps(gt)
+        gt.loc[:, 'path'] = merge_steps(gt)
         cal_dir_prob(gt, geometry)
         gt.loc[:, 'trans_prob'] = gt.dist_prob * gt.dir_prob
         return gt
 
     gt.loc[:, 'trans_prob'] = gt.dist_prob
     return gt
-
 
 @timeit
 def analyse_spatial_info(geograph: GeoDigraph,
@@ -132,7 +124,9 @@ def analyse_spatial_info(geograph: GeoDigraph,
     return gt
 
 
-def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='whole_path'):
+def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='path'):
+    """For beam-search
+    """
     ori_index = gt.index
     gt = cal_dist_prob(gt, net)
     gt.index = ori_index

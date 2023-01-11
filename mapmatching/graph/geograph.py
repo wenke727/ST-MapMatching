@@ -14,8 +14,6 @@ from ..utils.serialization import save_checkpoint, load_checkpoint
 
 class GeoDigraph(Digraph):
     def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
-        # FIXME df_edges 存在多条边
-        # TODO eid 单调递增
         self.df_edges = df_edges
         self.df_nodes = df_nodes
         self.search_memo = {}
@@ -41,15 +39,15 @@ class GeoDigraph(Digraph):
     def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):
         route = self.searcher.search(src, dst, max_steps, max_dist)
         
-        if 'path' not in route:
-            route['path'] = self.transform_node_seq_to_edge_seq(route['waypoints'])
+        if 'epath' not in route:
+            route['epath'] = self.transform_vpath_to_epath(route['vpath'])
         
         if geom and 'geometry' not in route:
-            lst = route['path']
+            lst = route['epath']
             if lst is None:
                 route['geometry'] = None
             else:
-                route['geometry'] = self.transform_edge_seq_to_polyline(lst)
+                route['geometry'] = self.transform_epath_to_linestring(lst)
         
         return route
 
@@ -64,11 +62,7 @@ class GeoDigraph(Digraph):
     def get_edge(self, eid, attrs=None, reset_index=False):
         """Get edge by eid [0, n]"""
         res = self._get_feature('df_edges', eid, attrs, reset_index)
-        if attrs == 'waypoints':
-            res = [int(i) for i in res.split(",")]
-            
-            return res
-        
+
         return res
 
     def get_node(self, nid, attrs=None, reset_index=False):
@@ -109,13 +103,13 @@ class GeoDigraph(Digraph):
 
     def get_pred_edges(self, eid):
         src, _ = self.eid_2_od[eid]
-        eids = self.do_2_eid[src].values()
+        eids = [i['eid'] for i in self.graph_r[src].values()]
 
         return self.df_edges.loc[eids]
 
     def get_succ_edges(self, eid):
         _, dst = self.eid_2_od[eid]
-        eids = self.od_2_eid[dst].values()
+        eids = [i['eid'] for i in self.graph[dst].values()]
 
         return self.df_edges.loc[eids]
 
@@ -127,19 +121,16 @@ class GeoDigraph(Digraph):
         return df
 
     """ transfrom """
-    def transform_node_seq_to_edge_seq(self, node_lst:np.array, on:list=['src', 'dst'], key='eid'):
-        if node_lst is None or len(node_lst) <= 1:
+    def transform_vpath_to_epath(self, seq:np.array):
+        if seq is None or len(seq) <= 1:
             return None
         
-        df = pd.DataFrame({on[0]: node_lst[:-1], 
-                           on[1]: node_lst[1:]})
-        
-        # Tips: the merge operation sequence is important
-        eids = df.merge(self.df_edges[on + [key]], on=on)[key].values.tolist()
+        eids = [self.get_eid(seq[i], seq[i+1]) 
+                    for i in range(len(seq)-1)]
 
         return eids
 
-    def transform_edge_seq_to_polyline(self, eids):
+    def transform_epath_to_linestring(self, eids):
         steps = self.get_edge(eids, attrs=['geometry'], reset_index=True)
         coords = np.concatenate(steps.geometry.apply(lambda x: x.coords), axis=0)
         
@@ -192,6 +183,7 @@ class GeoDigraph(Digraph):
 
         return self
 
+    """ adding and removing nodes and edges """
     def add_edge(self, start, end, length=None):
         # add edge to dataframe
         return super().add_edge(start, end, length)
@@ -213,26 +205,41 @@ class GeoDigraph(Digraph):
         df_edges_rev.loc[:, 'geometry']  = df_edges_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
         df_edges_rev.loc[:, 'waypoints'] = df_edges_rev.waypoints.apply(lambda x: x[::-1])
         df_edges_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
-        eids = range(self.max_eid, self.max_eid + df_edges_rev.shape[0])
-        df_edges_rev.index = df_edges_rev.loc[:, 'eid'] = eids
 
-        df_edges = gpd.GeoDataFrame(pd.concat([self.df_edges, df_edges_rev]))
-        self.df_edges = df_edges
-
-        self.add_edges_from(df_edges_rev[['src', 'dst', 'dist']].values) 
+        self.add_edges_from_df(df_edges_rev)
 
         # two ways offsets
-        idxs = self.df_edges.query('way_id == @way_id').index
-        self.df_edges.loc[idxs, 'geom_origin'] = self.df_edges.loc[idxs].geometry.copy()
-        self.df_edges.loc[idxs, 'geometry'] = self.df_edges.loc[idxs].apply( lambda x: parallel_offset_edge(x), axis=1 )
+        if offset:
+            idxs = self.df_edges.query('way_id == @way_id').index
+            self.df_edges.loc[idxs, 'geom_origin'] = self.df_edges.loc[idxs].geometry.copy()
+            self.df_edges.loc[idxs, 'geometry'] = self.df_edges.loc[idxs].apply( lambda x: parallel_offset_edge(x), axis=1 )
 
         return True
 
     def add_edges_from(self, edges):
         return super().build_graph(edges)
 
-    def remove_edge(self, start, end):
-        return super().remove_edge(start, end)
+    def add_edges_from_df(self, df):
+        eids = range(self.max_eid, self.max_eid + df.shape[0])
+        df.index = df.loc[:, 'eid'] = eids
+
+        df_edges = gpd.GeoDataFrame(pd.concat([self.df_edges, df]))
+        self.df_edges = df_edges
+
+        return self.add_edges_from(df[['src', 'dst', 'dist']].values) 
+
+    def remove_edge(self, eid=None, src=None, dst=None):
+        assert eid is not None or src is not None and dst is not None
+
+        if eid is None:
+            eid = self.get_eid(src, dst)
+        else:
+            src, dst = self.eid_2_od[eid]
+
+        self.df_edges.drop(index=eid, inplace=True)
+        self.search_memo.clear()
+
+        return super().remove_edge(src, dst)
 
 
 if __name__ == "__main__":
@@ -242,6 +249,6 @@ if __name__ == "__main__":
     route = network.search(src=7959990710, dst=499265789)
     # route = network.search(src=7959602916, dst=7959590857)
 
-    network.df_edges.loc[route['path']].plot()
+    network.df_edges.loc[route['epath']].plot()
     
-    network.transform_edge_seq_to_polyline(route['path'])
+    network.transform_epath_to_linestring(route['epath'])

@@ -43,7 +43,7 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
     traj.loc[[item.pid_1]].plot(ax=ax, marker="s", label=f'D ({dst})', zorder=9)
 
     # path
-    gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='path')
+    gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='Path')
     net.get_edge([src]).plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
     net.get_edge([dst]).plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
 

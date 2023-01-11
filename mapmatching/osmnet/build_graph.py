@@ -44,7 +44,7 @@ if __name__ == "__main__":
     graph = build_geograph(ckpt=f'../../data/network/{name}_graph_pygeos.ckpt')
     # check
     path = graph.search(src=7959990710, dst=499265789)
-    graph.get_edge(path['path']).plot()
+    graph.get_edge(path['epath']).plot()
 
     # save to DB
     # graph.to_postgis(name)

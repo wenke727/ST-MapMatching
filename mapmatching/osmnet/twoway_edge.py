@@ -4,6 +4,17 @@ from loguru import logger
 from shapely.geometry import LineString
 
 
+def swap_od(df_edge_rev, od_attrs=['src', 'dst']):
+    df_edge_rev.loc[:, 'dir']       = -1
+    df_edge_rev.loc[:, 'order']     = -df_edge_rev.order - 1
+    df_edge_rev.loc[:, 'waypoints'] = df_edge_rev.waypoints.apply(lambda x: x[::-1])
+    df_edge_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
+    if 'geometry' in list(df_edge_rev):
+        df_edge_rev.loc[:, 'geometry']  = df_edge_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
+
+    return df_edge_rev
+
+
 def add_reverse_edge(df_edges, df_ways, od_attrs=['src', 'dst'], offset=True):
     """Add reverse edge.
 
@@ -14,20 +25,17 @@ def add_reverse_edge(df_edges, df_ways, od_attrs=['src', 'dst'], offset=True):
         net.df_edges.query( f"rid == {rid} or rid == -{rid}" ).sort_values(['order','rid'])
     """
     assert 'oneway' in df_ways.columns, "Check `oneway` tag"
-    assert 'geometry' in df_edges.columns, "Check `geometry` attribute"
     df_edges.loc[:, 'dir'] = 1
 
     idxs = df_ways.query('oneway == False').index
     df_edge_rev = df_edges.query("way_id in @idxs")
 
-    ring_mask = df_edge_rev.geometry.apply(lambda x: x.is_ring)
-    df_edge_rev = df_edge_rev[~ring_mask]
+    has_geom = 'geometry' in list(df_edges)
+    if has_geom:
+        ring_mask = df_edge_rev.geometry.apply(lambda x: x.is_ring)
+        df_edge_rev = df_edge_rev[~ring_mask]
 
-    df_edge_rev.loc[:, 'dir']       = -1
-    df_edge_rev.loc[:, 'order']     = -df_edge_rev.order - 1
-    df_edge_rev.loc[:, 'geometry']  = df_edge_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
-    df_edge_rev.loc[:, 'waypoints'] = df_edge_rev.waypoints.apply(lambda x: x[::-1])
-    df_edge_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
+    df_edge_rev = swap_od(df_edge_rev, od_attrs)
 
     df_edges = pd.concat([df_edges, df_edge_rev]).reset_index(drop=True)
 

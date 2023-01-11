@@ -8,6 +8,47 @@
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 
+## [V1.3.0] - 2023-1-11
+
+### Added
+
+- `GeoDigraph`
+  - add_edges_from_df
+  - remove_edge
+  - get_eid(src, dst) 通过 src 和 dst 获取 eid
+
+### Changed
+
+- `GeoDigraph`
+
+  - graph 和 od_2_eid 的属性合并
+
+     graph 存储一个 字典，目前设有 eid 和 cost；原 graph 存储 cost， od_2_eid 存储 eid
+
+  - `transform_node_seq_to_edge_seq` 更名 `transform_vpath_to_epath`
+
+  -  transform_edge_seq_to_polyline -> transform_epath_to_linestring
+  - search 返回值 属性变更，epath，vpath，path分别代表 途径的边，途径的点，规划路径的 geom(含 first_step 和 last_step)
+
+- astar
+
+  - search 返回值 属性变更，默认返回 vpath
+
+- match
+
+  - cal_dist_prob： 针对`纠正 gt 两个点位于同一个路段上` 时候 epath 和 vpath的修改
+
+- pase_osm_xml
+
+  - parse_xml_to_graph 抽象成若干个子函数
+    - _parse_xml
+    - _simplify_edges
+    - _add_revert_edges
+    - _process_multi_edges
+    - _transform_coords_seq_2_linestring
+    - edge_offset
+    - append_way_info
+
 ## [V1.2.9] - 2023-1-5
 
 ### Added

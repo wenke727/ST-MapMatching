@@ -39,19 +39,22 @@ def combine_links(edges, combine_intervals):
         edges.set_index('order', inplace=True)
 
     drop_index = []
+    keep_iddex = []
+    # FIXME 区间
     for start, end, _ in combine_intervals:
         segs = edges.query(f"{start} <= order <= {end}")
         _dst = segs.iloc[-1]['dst']
-        nids = np.append(segs.src.values, _dst)
+        nids = np.append(segs.src.values, _dst).tolist()
 
         edges.loc[start, 'dst'] = _dst
         edges.loc[start, 'dist'] = segs.dist.sum()
-        edges.loc[start, "waypoints"] = ",".join((str(i) for i in nids))
+        edges.loc[start, "waypoints"] = str(nids)
 
         drop_index += [i for i in range(start+1, end+1)]
 
     edges.drop(index=drop_index, inplace=True)
     edges.reset_index(inplace=True)
+    edges.loc[:, "waypoints"] = edges.loc[:, "waypoints"].apply(lambda x: eval(x) if isinstance(x, str) else x)
     
     return edges
 
@@ -65,11 +68,11 @@ def pipeline_combine_links(df_edges:pd.DataFrame, exclude_list, n_jobs=8):
                                     .order.apply(list)\
                                     .apply(lambda lst: merge_intervals([[i-1, i] for i in lst if i > 0]))
 
-    # parallel process, 不能使用 cands_edges，因为涉及到上下游的合并
+    # parallel process, 不能使用 cands_edges, 因为涉及到上下游的合并
     _df_edges = df_edges.query(f"way_id in @cands_way_ids")
     params = ((df, aux_edge_intervals[i]) 
                 for i, df in _df_edges.groupby('way_id'))
-    combined_edges = parallel_process(combine_links, params, pbar_switch=True, 
+    combined_edges = parallel_process(combine_links, params, pbar_switch=True,
                                       n_jobs=n_jobs, total=len(cands_way_ids), desc='Combine edges')
 
     # keep edges

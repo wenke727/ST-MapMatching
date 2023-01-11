@@ -118,7 +118,7 @@ def cal_points_geom_seq_distacne(geoms:gpd.GeoSeries):
     return dist, coords
 
 def points_geoseries_2_ndarray(geoms:gpd.GeoSeries):
-    return np.concatenate(geoms.apply(lambda x: x.coords[:])).reshape(-1, 2)
+    return np.concatenate(geoms.apply(lambda x: x.coords[:]).values).reshape(-1, 2)
 
 
 if __name__ == "__main__":

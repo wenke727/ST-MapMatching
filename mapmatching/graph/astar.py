@@ -4,6 +4,7 @@ from loguru import logger
 from collections import deque
 from haversine import haversine, Unit
 
+# from networkx import astar_path
 # TODO: 寻找更快速的最短路算法
 
 def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord'):
@@ -48,7 +49,7 @@ class PathPlanning:
         
         getattr(logger, self.level)(info)
         
-        return False, {"status": 1, 'waypoints': [], 'cost': np.inf} 
+        return False, {"status": 1, 'vpath': [], 'cost': np.inf} 
 
     def search(self, src, dst):
         return NotImplementedError
@@ -63,9 +64,10 @@ class Astar(PathPlanning):
                  max_steps: int = 2000, max_dist: int = 10000, level='debug'):
         super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level)
         
-    def search(self, src, dst, max_steps=None, max_dist=None):
+    def search(self, src, dst, max_steps=None, max_dist=None, weight='cost', output='epath'):
+        # TODO: output epath / vpath. Refs: https://igraph.readthedocs.io/en/stable/tutorials/shortest_path_visualisation.html
         if src == dst:
-            return {'status': 0, 'waypoints':[src], 'cost': 0}
+            return {'status': 0, 'vpath': [src], 'cost': 0}
         
         if (src, dst) in self.search_memo:
             res = self.search_memo[(src, dst)]
@@ -90,11 +92,11 @@ class Astar(PathPlanning):
             if cur == dst or step_counter > max_steps:
                 break
             
-            for nxt, cost in self.graph[cur].items():
+            for nxt, attrs in self.graph[cur].items():
                 if nxt not in self.graph:
                     continue
                 
-                new_cost = distance[cur] + cost
+                new_cost = distance[cur] + attrs[weight]
                 if nxt in distance and new_cost >= distance[nxt]:
                     continue
 
@@ -105,17 +107,19 @@ class Astar(PathPlanning):
                 _h = calculate_nodes_dist(self.nodes, dst, nxt, self.nodes_dist_memo)
                 heapq.heappush(queue, (new_cost + _h, nxt) )
                 came_from[nxt] = cur
+                # came_from[nxt] = {"edge": attrs['eid'], 'node': cur}
+
             step_counter += 1
 
         # abnormal situation
         if cur != dst:
-            res = {"status": 2, 'waypoints': [], 'cost': np.inf} 
+            res = {"status": 2, 'vpath': [], 'cost': np.inf} 
             self.search_memo[(src, dst)] = res
             return res
 
         # reconstruct path
         path = self.reconstruct_path(dst, came_from)
-        res = {'status': 0, 'waypoints':path, 'cost': distance[dst]}
+        res = {'status': 0, 'vpath': path, 'cost': distance[dst]}
         self.search_memo[(src, dst)] = res
 
         return res
@@ -150,11 +154,11 @@ class Bi_Astar(PathPlanning):
 
         meet =self._searching(src, dst)
         if meet is None:
-            return  {"status": 2, 'waypoints': [], 'cost': np.inf} 
+            return  {"status": 2, 'vpath': [], 'cost': np.inf} 
 
         path = self.extract_path(src, dst)
         cost = self.visited_backward[self.meet] + self.visited_forward[self.meet]
-        res = {'status': 0, 'waypoints':path, 'cost': cost}
+        res = {'status': 0, 'vpath': path, 'cost': cost}
 
         return res
 
@@ -300,7 +304,7 @@ class Bi_Astar(PathPlanning):
 
         getattr(logger, level)(info)
 
-        return False, {"status": 1, 'waypoints': [], 'cost': np.inf}
+        return False, {"status": 1, 'vpath': [], 'cost': np.inf}
 
     def _check_memo(self, src, dst):
         if (src, dst) not in self.search_memo:
@@ -314,7 +318,7 @@ class Bi_Astar(PathPlanning):
         ax = network.df_nodes.loc[points].plot()
 
         eids = network.transform_node_seq_to_edge_seq(path)
-        network.df_edges.loc[eids].plot(ax=ax, label='path')
+        network.df_edges.loc[eids].plot(ax=ax, label='Path')
         network.df_nodes.loc[self.visited_backward].plot(
             ax=ax, label='Backword', color='r', alpha=.8)
         network.df_nodes.query(f"nid == {self.meet}").plot(
@@ -323,6 +327,7 @@ class Bi_Astar(PathPlanning):
             ax=ax, label='Forword', color='y', alpha=.8)
 
         ax.legend()
+
 
 if __name__ == "__main__":
     from stmm.graph import GeoDigraph
@@ -339,29 +344,9 @@ if __name__ == "__main__":
     error_lst = []
     for (src, dst), ans in astar_search_memo.items():
         res = searcher.search(src, dst)
-        cond = np.array(res['waypoints']) == np.array(ans['waypoints'])
+        cond = np.array(res['vpath']) == np.array(ans['vpath'])
         if isinstance(cond, np.ndarray):
             cond = cond.all()
         if not cond:
             # print(res['cost'] == ans['cost'], cond)
-            print(f"\n\n({src}, {dst})\n\tans: {ans['waypoints']}, {ans['cost']}\n\tres: {res['waypoints']}, {res['cost']}")
-
-
-    # path = searcher.search(src=5345110208, dst=8526861081)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
-    # path = searcher.search(src=5345110208, dst=8524766759)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
-    # path = searcher.search(src=5345110208, dst=8524766832)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
-    # path = searcher.search(src=5345110208, dst=8524766760)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
-    # path = searcher.search(src=5345110208, dst=9909317168)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
-    # path = searcher.search(src=5345110208, dst=8526861025)
-    # searcher.plot_searching_boundary(path['waypoints'], network)
-
+            print(f"\n\n({src}, {dst})\n\tans: {ans['vpath']}, {ans['cost']}\n\tres: {res['vpath']}, {res['cost']}")

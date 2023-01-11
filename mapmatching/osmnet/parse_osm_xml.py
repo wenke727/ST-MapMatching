@@ -1,28 +1,28 @@
 #%%
 import re
-import osmium
 import warnings
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from loguru import logger
-from shapely.geometry import Point
+from osmium import SimpleHandler
+from shapely.geometry import Point, LineString
 
 warnings.filterwarnings('ignore')
 
 import sys
-from ..utils.timer import Timer
-from shapely.geometry import LineString
-from ..osmnet.osm_io import load_graph, save_graph
-from ..osmnet.twoway_edge import add_reverse_edge
+from ..utils.timer import Timer, timeit
 from ..osmnet.misc import Bunch, cal_od_straight_distance
+from ..osmnet.osm_io import load_graph, save_graph
+from ..osmnet.twoway_edge import add_reverse_edge, swap_od, edge_offset
 from ..osmnet.combine_edges import pipeline_combine_links
 from ..setting import highway_filters, link_type_level_dict
+from ..geo.haversineDistance import points_geoseries_2_ndarray
 
 
-class WayHandler(osmium.SimpleHandler):
+class WayHandler(SimpleHandler):
     def __init__(self, link_type_filter=None):
-        osmium.SimpleHandler.__init__(self)
+        SimpleHandler.__init__(self)
         self.link_type_filter = link_type_filter
         
         self.way_nodes = set()
@@ -57,7 +57,7 @@ class WayHandler(osmium.SimpleHandler):
                     'order': i, 
                     'src':nds[i], 
                     'dst':nds[i+1],
-                    'waypoints': f"{nds[i]},{nds[i+1]}"
+                    'waypoints': f"[{nds[i]},{nds[i+1]}]"
             }
             self.edges.append(item)
 
@@ -126,9 +126,9 @@ class WayHandler(osmium.SimpleHandler):
                     else:
                         logger.warning(f'new maxspeed type detected at way {way.osm_way_id}, {maxspeed_info}')                            
 
-class NodeHandler(osmium.SimpleHandler):
+class NodeHandler(SimpleHandler):
     def __init__(self, node_filter=None):
-        osmium.SimpleHandler.__init__(self)
+        SimpleHandler.__init__(self)
         self.nodes = {}
         self.node_filter = node_filter
 
@@ -160,7 +160,11 @@ class NodeHandler(osmium.SimpleHandler):
 
 def check_multi_edges(df_edges):
     tmp = df_edges.groupby(['src', 'dst']).apply(lambda x: x.index.values)
-    idxs = set(np.concatenate(tmp[tmp.apply(len) > 1].values))
+    idxs = tmp[tmp.apply(len) > 1].values
+    if len(idxs) < 1:
+        return []
+        
+    idxs = set(np.concatenate(idxs))
 
     status = len(idxs) > 0
     if status:
@@ -169,11 +173,14 @@ def check_multi_edges(df_edges):
     
     return []
 
-def _extract_od(waypoints):
-    x = waypoints.split(',')
-    return [f"{x[i]},{x[i+1]}" for i in range(len(x)-1)]
+def _extract_od(points):
+    if isinstance(points, str):
+        points = eval(points)
+    assert isinstance(points, list), "check od type"
+    
+    return [str([points[i], points[i+1]]) for i in range(len(points)-1)]
 
-def postprcess_ways(way_handler):
+def post_process_ways(way_handler):
     df_ways = pd.DataFrame.from_dict(way_handler.osm_way_dict, orient='index')
     df_ways.loc[:, 'link'] = df_ways.highway.apply(lambda x: "link" in x)
     df_ways.loc[:, 'highway'] = df_ways.highway.apply(lambda x: x.split('_')[0])
@@ -184,87 +191,191 @@ def postprcess_ways(way_handler):
     
     return df_ways
 
-def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twoway=True, offset=True, 
-                       crs="epsg:4326", in_sys='wgs', out_sys='wgs', n_jobs=16):
-    # TODO wgs, gcj
-    
+def drop_duplicates_way(df, df_ways=None, att="ref_node_id_list", sort_atts=['src', 'dst', 'level', 'order']):
+    lst = df.loc[:, att].apply(str)
+    mask = lst.value_counts() > 1
+    contents = mask[mask].index
+
+    idxs = lst.to_frame().query(f"{att} in @contents").index
+    _df = df.loc[idxs]
+    if df_ways:
+        _df = append_level_to_df(_df, df_ways)
+
+    duplicates = _df.sort_values([i for i in sort_atts if i in list(df)])
+    keep_idxs = set(duplicates.groupby(['src', 'dst']).head(1).index)
+    drop_idxs = set([i for i in duplicates.index if i not in keep_idxs])
+
+    # drop_ways = df_ways.loc[drop_idxs]
+    df.drop(index=drop_idxs, inplace=True)
+
+    return df, keep_idxs, drop_idxs
+
+def append_level_to_df(df, df_ways, left_on='way_id'):
+    return df.merge(df_ways[['level']], left_on=left_on, right_index=True, how='left')
+
+def check_dulplicates(df):
+    # BUG
+    src, dst = 10253667641, 10253667620
+    tmp = df.query('src == @src and dst == @dst')
+    if tmp.shape[0] > 1:
+        print("Exist duplicates !!!!")
+
+@timeit
+def _parse_xml(fn, highway_filters, crs="epsg:4326", in_sys='wgs', out_sys='wgs'):
     # ways
     timer = Timer()
     way_handler = WayHandler(highway_filters)
     way_handler.apply_file(fn)
-    df_ways = postprcess_ways(way_handler)
+    df_ways = post_process_ways(way_handler)
+    df_ways, keep_idxs, drop_idxs = drop_duplicates_way(df_ways)    
     print(f"Parse ways: {timer.stop():.2f} s")
+    print(f"\tDrop duplicates ways: {drop_idxs}")
 
-    # nodes
+    # nodes 
     timer.start()
     node_handler = NodeHandler(way_handler.way_nodes)
     node_handler.apply_file(fn)
-    df_nodes = gpd.GeoDataFrame.from_dict(node_handler.nodes, orient='index', crs='epsg:4326')
+    df_nodes = gpd.GeoDataFrame.from_dict(node_handler.nodes, orient='index', crs=crs)
+    assert in_sys == out_sys == "wgs", "Only support `wgs84` coordnation system." # TODO
     print(f"Parse nodes: {timer.stop():.2f} s")
-    
+
     # post-process
     timer.start()
-    df_edges_ori = pd.DataFrame(way_handler.edges)
-    df_edges_ori.loc[:, 'dist'] = cal_od_straight_distance(df_edges_ori, df_nodes)
-    print(f"Transform to Dataframe: {timer.stop():.2f} s, node len: {df_nodes.shape[0]}")
+    df_edges = pd.DataFrame(way_handler.edges)
+    _size = df_edges.shape[0]
+    df_edges.query('way_id not in @drop_idxs', inplace=True)
+    types = df_edges.waypoints.apply(lambda x: type(x)).unique()
+    if len(types) == 1 and types[0] == str:
+        df_edges.loc[:, 'waypoints'] = df_edges.loc[:, 'waypoints'].apply(eval)
+    if df_edges.shape[0] != _size:
+        print(f"\tDrop duplicates ways / edges: {_size} -> {df_edges.shape[0]}")
+    check_dulplicates(df_edges)
 
-    # combine edges
-    if simplify:
-        signal_control_points = df_nodes[~df_nodes.ctrl_type.isna()].index.unique()
-        df_edges = pipeline_combine_links(df_edges_ori, signal_control_points, n_jobs)
-        print(f"Simplify the graph, {(1 - df_edges.shape[0] / df_edges_ori.shape[0]) * 100:.2f} % off")
-    
-        # BUG process multi-edges
-        df_edges = df_edges.merge(df_ways[['level']], left_on='way_id', right_index=True, how='left')
-        idxs = check_multi_edges(df_edges)
-        keep_idx = df_edges.loc[idxs]\
-                           .sort_values(['level', 'dist'], ascending=[True, True])\
-                           .groupby(['src', 'dst'])\
-                           .head(1).index
-        remove_idx = [i for i in idxs if i not in keep_idx]
-        od_lst = df_edges.loc[remove_idx].waypoints.apply(_extract_od).tolist()
-        od_lst = np.concatenate(od_lst)
-        df_edges.drop(index=remove_idx, inplace=True)
-        df_edges = pd.concat([df_edges_ori.query("waypoints in @od_lst"), df_edges.drop(columns='level')])
-    
+    df_edges.loc[:, 'dist'] = cal_od_straight_distance(df_edges, df_nodes)
+    print(f"\tTransform to Dataframe: {timer.stop():.2f} s, node len: {df_nodes.shape[0]}")
+
+    return df_ways, df_nodes, df_edges
+
+@timeit
+def _transform_coords_seq_2_linstring(df_edges, df_nodes):
     # Transform coords seq to geometry
-    timer.start()
     df_edges.loc[:, 'waypoints'] = df_edges.waypoints.apply(
-        lambda x: [int(i) for i in x.split(',')])
+            lambda x: eval(x) if isinstance(x, str) else x)
     df_edges.loc[:,'geometry'] = df_edges.loc[:, 'waypoints'].apply(
-        lambda x: LineString([df_nodes.loc[i].geometry.coords[0] for i in x]))
-    print(f"Transform coords seq to geometry: {timer.stop():.2f} s")
+        lambda x: LineString(points_geoseries_2_ndarray(df_nodes.loc[x].geometry)))
     
-    # bidirectional ways
+    return gpd.GeoDataFrame(df_edges)
+
+@timeit
+def _simplify_edges(df_edges, df_nodes, n_jobs):
+    ori_df_edges = df_edges.copy()
+    signal_control_points = df_nodes[~df_nodes.ctrl_type.isna()].index.unique()
+    _edges = pipeline_combine_links(ori_df_edges, signal_control_points, n_jobs)
+    print(f"\tSimplify the graph, len {ori_df_edges.shape[0]} -> {_edges.shape[0]}, {(1 - _edges.shape[0] / ori_df_edges.shape[0]) * 100:.2f} % off")
+
+    return _edges
+
+@timeit
+def _add_revert_edges(df_edges, df_ways):
+    _size = df_edges.shape[0]
+    df_edges = add_reverse_edge(df_edges, df_ways, offset=False)
+    print(f"\tAdd revert edge, len {_size} -> {df_edges.shape[0]}, {(df_edges.shape[0] / _size - 1) * 100:.2f} % up")
+
+    return df_edges
+
+@timeit
+def _process_multi_edges(df_edges, ori_df_edges, df_ways):
+    if "level" not in list(df_edges):
+        df_edges = df_edges.merge(df_ways[['level']], left_on='way_id', right_index=True, how='left')
+    
+    idxs = check_multi_edges(df_edges)
+    multi_edges = df_edges.loc[idxs].sort_values(
+            ['src', 'dst', 'dist', 'level', 'way_id'], ascending=[True, True, True, True, True])
+    normal_edges = df_edges.query("index not in @idxs")
+
+    # case 1: waypoints 一致的情况
+    multi_edges, keep_idxs_case1, drop_idxs_case1 = drop_duplicates_way(multi_edges, att='waypoints')
+    if drop_idxs_case1:
+        df_edges.loc[keep_idxs_case1.union(drop_idxs_case1)]
+        assert multi_edges.query(f"index == {list(drop_idxs_case1)[0]}").shape[0] == 0
+        print(f"Drop same waypoints: {drop_idxs_case1}")
+
+    # case 2: waypoints 内容不一致
+    keep_idxs = multi_edges.groupby(['src', 'dst']).head(1).index
+    drop_idxs_case2 = set([i for i in idxs if i not in keep_idxs])
+    drop_idxs_case2.difference_update(drop_idxs_case1)
+
+    od_set = df_edges.loc[drop_idxs_case2].waypoints.apply(_extract_od).tolist()
+    od_set = set(np.concatenate(od_set))
+    df_edges_waypoints = ori_df_edges.waypoints.apply(str).to_frame()
+
+    pos = df_edges_waypoints.query("waypoints in @od_set")
+    pos_od_idxs = pos.index
+    pos_od_set = set(pos.waypoints.values)
+    pos_df_edges = ori_df_edges.loc[pos_od_idxs]
+    pos_df_edges.loc[:, 'dir'] = 1
+
+    neg_od_set = od_set - pos_od_set
+    neg_od_set = {str(eval(x)[::-1]) for x in neg_od_set}
+    neg_od_set = df_edges_waypoints.query("waypoints in @neg_od_set").index
+    neg_df_edges = swap_od(ori_df_edges.loc[neg_od_set])
+    neg_df_edges.loc[:, 'dir'] = -1
+
+    _multi_edges = pd.concat([pos_df_edges, neg_df_edges])
+    print(f"od list len: {len(od_set)}, df_segs len: {_multi_edges.shape[0]}")
+
+    # case 3: 针对 waypoints 仅有两条记录的情况
+    ps = multi_edges.loc[drop_idxs_case2].waypoints
+    tmp = df_edges.loc[ps[ps.apply(len) == 2].index]
+    assert tmp.shape[0] == 0
+
+    df_edges = pd.concat([normal_edges, multi_edges.loc[keep_idxs], _multi_edges])\
+                 .drop(columns='level').reset_index(drop=True)
+
+    return df_edges
+
+def append_way_info(df_edges, df_ways, way_attrs = ['highway', 'level', 'name', 'oneway', 'link']):
+    df_edges = df_edges.merge(df_ways[way_attrs], left_on='way_id', right_index=True, how='left')
+    df_edges.rename(columns={'highway': 'road_type'}, inplace=True)
+    
+    return df_edges
+
+def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twoway=True, offset=True, 
+                       crs="epsg:4326", in_sys='wgs', out_sys='wgs', n_jobs=16):   
+
+    df_ways, df_nodes, df_edges_raw = _parse_xml(fn, highway_filters, crs, in_sys, out_sys)
+
+    ori_df_edges = df_edges_raw.copy()
+    if simplify:
+        df_edges = _simplify_edges(ori_df_edges, df_nodes, n_jobs=n_jobs)
     if twoway:
-        timer.start()
-        df_edges = add_reverse_edge(df_edges, df_ways, offset=offset)
-        print(f"Process twoway edges: {timer.stop():.2f} s")
-    
-    # TODO multi-edges
-    df_edges = gpd.GeoDataFrame(df_edges, crs=crs)
-    if 'eid' not in df_edges:
-        df_edges.reset_index(inplace=True, drop=True)
-        df_edges.loc[:, 'eid'] = df_edges.index.values
-    assert (df_edges.eid == df_edges.index).sum() / df_edges.shape[0] == 1, "Check eid"
-    print("Check the index sequence: ", (df_edges.index.values - range(df_edges.shape[0])).sum())  
-    
+        df_edges = _add_revert_edges(df_edges, df_ways)
+    df_edges = _process_multi_edges(df_edges, ori_df_edges, df_ways)
+    df_edges = _transform_coords_seq_2_linstring(df_edges, df_nodes)
+    if offset:
+        df_edges = edge_offset(df_edges).sort_index()
+    df_edges = append_way_info(df_edges, df_ways)
+    df_edges.reset_index(inplace=True, drop=True)
+    df_edges.loc[:, 'eid'] = df_edges.index.values
+
+    multi_edge_idxs = check_multi_edges(df_edges)
+    assert len(multi_edge_idxs) == 0, "Check multi-edges"
+
     return df_nodes, df_edges, df_ways
 
 
 #%%
 if __name__ == "__main__":
-    # fn = "/home/pcl/factory/ST-MapMatching/cache/GBA.osm.xml"
-    # fn = "/home/pcl/factory/ST-MapMatching/cache/Shenzhen.osm.xml"
+    highway_filters=highway_filters; simplify=True; twoway=True; offset=True; crs="epsg:4326"; in_sys='wgs'; out_sys='wgs'; n_jobs=16
+    fn = "./data/network/Shenzhen.osm.xml"
+
     timer = Timer()
-    fn = "../../cache/Shenzhen.osm.xml"
     df_nodes, df_edges, df_ways = parse_xml_to_graph(fn)
 
     """ 测试最短路算法 """
     timer.start()
     from graph.geograph import GeoDigraph
     digraph = GeoDigraph(df_edges, df_nodes)
-    # digraph.save_checkpoint('../../cache/Shenzhen_graph_12.0.ckpt')
 
     timer.start()
     path = digraph.search(src=7959990710, dst=499265789)

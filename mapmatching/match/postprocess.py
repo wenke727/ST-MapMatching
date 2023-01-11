@@ -35,9 +35,9 @@ def get_path(net:GeoDigraph,
     steps = rList.copy()
     steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
     idxs = steps[['pid', 'eid', 'eid_1']].values[:-1].tolist()
-    steps = graph.loc[idxs, ['path', 'dist_prob', 'trans_prob']].reset_index()
+    steps = graph.loc[idxs, ['epath', 'dist_prob', 'trans_prob']].reset_index()
 
-    extract_eids = lambda x: np.concatenate([[x.eid_0], x.path]) if x.path else [x.eid_0]
+    extract_eids = lambda x: np.concatenate([[x.eid_0], x.epath]) if x.epath else [x.eid_0]
     eids = np.concatenate(steps.apply(extract_eids, axis=1))
     eids = np.append(eids, [steps.iloc[-1].eid_1])
     keep_cond = np.append([True], eids[:-1] != eids[1:])
