@@ -16,7 +16,6 @@ def load_geograph(ckpt):
 
 
 def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_db=False, *args, **kwargs):
-    # TODO coord sys： wgs, gcj
     if ckpt:
         return load_geograph(ckpt)
 
@@ -25,10 +24,6 @@ def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_d
     
     df_nodes, df_edges, df_ways = parse_xml_to_graph(xml_fn, *args, **kwargs)
     
-    attrs = ['name', 'level', 'highway', 'link', 'maxspeed', 'oneway', 'lanes']
-    if way_info: 
-        df_edges = df_edges.merge(df_ways[attrs], left_on='way_id', right_index=True)
-        df_edges.rename(columns={'highway':'road_type'}, inplace=True)
 
     graph = GeoDigraph(df_edges, df_nodes)
     

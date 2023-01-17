@@ -176,3 +176,19 @@ class Digraph:
             aux_nids = [id for id in aux_nids if id not in exclude_list]
 
         return aux_nids
+
+    """ transfrom """
+    def transform_vpath_to_epath(self, seq:np.array):
+        if seq is None or len(seq) <= 1:
+            return None
+        
+        eids = [self.get_eid(seq[i], seq[i+1]) 
+                    for i in range(len(seq)-1)]
+
+        return eids
+    
+    def transform_epath_to_vpath(self, path):
+        ods = [self.eid_2_od[e][0] for e in path[:-1]]
+        ods.extend(self.eid_2_od[path[-1]])
+        
+        return ods

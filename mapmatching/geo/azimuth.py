@@ -190,7 +190,7 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if offset:
         lst = (lst + 1) / 2
         
-    if not weight:
+    if not weight or np.sum(weight) == 0:
         val = np.mean(lst)
     else:
         # weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 

@@ -7,8 +7,9 @@ from shapely.geometry import LineString
 # from networkx.classes import DiGraph
 
 from .base import Digraph
-from .astar import Astar, Bi_Astar
-from ..osmnet.twoway_edge import parallel_offset_edge
+from .astar import Astar
+from .bi_astar import Bi_Astar
+from ..osmnet.twoway_edge import parallel_offset_edge, swap_od
 from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
@@ -121,15 +122,6 @@ class GeoDigraph(Digraph):
         return df
 
     """ transfrom """
-    def transform_vpath_to_epath(self, seq:np.array):
-        if seq is None or len(seq) <= 1:
-            return None
-        
-        eids = [self.get_eid(seq[i], seq[i+1]) 
-                    for i in range(len(seq)-1)]
-
-        return eids
-
     def transform_epath_to_linestring(self, eids):
         steps = self.get_edge(eids, attrs=['geometry'], reset_index=True)
         coords = np.concatenate(steps.geometry.apply(lambda x: x.coords), axis=0)
@@ -198,13 +190,7 @@ class GeoDigraph(Digraph):
 
         ring_mask = df_edges_rev.geometry.apply(lambda x: x.is_ring)
         df_edges_rev = df_edges_rev[~ring_mask]
-
-        df_edges_rev.loc[:, 'dir']       = -1
-        # df_edges_rev.loc[:, 'way_id']   *= -1
-        df_edges_rev.loc[:, 'order']     = -df_edges_rev.order - 1
-        df_edges_rev.loc[:, 'geometry']  = df_edges_rev.geometry.apply(lambda x: LineString(x.coords[::-1]) )
-        df_edges_rev.loc[:, 'waypoints'] = df_edges_rev.waypoints.apply(lambda x: x[::-1])
-        df_edges_rev.rename(columns={od_attrs[0]: od_attrs[1], od_attrs[1]: od_attrs[0]}, inplace=True)
+        df_edges_rev = swap_od(df_edges_rev)
 
         self.add_edges_from_df(df_edges_rev)
 
@@ -240,6 +226,36 @@ class GeoDigraph(Digraph):
         self.search_memo.clear()
 
         return super().remove_edge(src, dst)
+
+    def split_edge(self, eid):
+        # TODO 
+        # !  delete multi-edges 
+        idxs = check_multi_edges(net)
+
+        keep_idx = df_edges.loc[eid]\
+                            .sort_values(['level', 'dist'], ascending=[True, True])\
+                            .groupby(['src', 'dst'])\
+                            .head(1).index
+        remove_idx = [i for i in idxs if i not in keep_idx]
+
+        for id in remove_idx:
+            print(f"Split multi-edge: {id}")
+            edges = net.get_edge(remove_idx)
+            net.remove_edge(id)
+
+            waypoints = edges.iloc[0].waypoints
+            coords = edges.iloc[0].geometry.coords[:]
+            tmp = pd.concat([edges] * (len(waypoints) - 1)).reset_index(drop=True)
+
+            tmp.loc[:, 'order'] = tmp.index
+            tmp.loc[:, 'src'] = waypoints[:-1]
+            tmp.loc[:, 'dst'] = waypoints[1:]
+            tmp.loc[:, 'waypoints'] = tmp.apply(lambda x: x.waypoints[x.name: x.name + 2], axis=1)
+            tmp.loc[:, 'geometry'] = tmp.apply(lambda x: LineString(coords[x.name: x.name + 2]), axis=1)
+
+            net.add_edges_from_df(tmp)
+            
+        return NotImplementedError
 
 
 if __name__ == "__main__":

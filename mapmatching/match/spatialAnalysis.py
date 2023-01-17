@@ -71,6 +71,9 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     # Add: w, v, path, geometry
     assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
 
+    if gt.empty:
+        return gt
+
     paths = gt.apply(lambda x:
                         net.search(x.dst, x.src, max_steps, max_dist),
                      axis=1, result_type='expand')
@@ -88,7 +91,11 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
 
     # distance transmission probability
     dist = gt.d_euc / gt.w
-    dist[dist > 1] = 0.95 / dist[dist > 1] # 惩罚略短的路径
+
+    # Penalize slightly shorter paths
+    mask = dist > 1.01
+    dist[mask] = 0.95 / dist[mask]
+    # Penalize flag_2_idxs
     gt.loc[:, 'dist_prob'] = dist
     gt.loc[flag_2_idxs, 'dist_prob'] *= .99
 
@@ -104,7 +111,6 @@ def cal_trans_prob(gt, geometry, dir_trans):
     gt.loc[:, 'trans_prob'] = gt.dist_prob
     return gt
 
-@timeit
 def analyse_spatial_info(geograph: GeoDigraph,
                          points: GeoDataFrame,
                          cands: GeoDataFrame,
@@ -127,6 +133,9 @@ def analyse_spatial_info(geograph: GeoDigraph,
 def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='path'):
     """For beam-search
     """
+    if gt.empty:
+        return gt
+
     ori_index = gt.index
     gt = cal_dist_prob(gt, net)
     gt.index = ori_index

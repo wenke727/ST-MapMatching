@@ -27,7 +27,7 @@ from .match.visualization import matching_debug_level, plot_matching_result
 from .utils.timer import timeit
 from .utils.logger_helper import make_logger
 from .utils.misc import SET_PANDAS_LOG_FORMET
-from .setting import DATA_FOLDER, DEBUG_FOLDER, DIS_FACTOR
+from .setting import DATA_FOLDER, DEBUG_FOLDER
 
 SET_PANDAS_LOG_FORMET()
 
@@ -35,22 +35,20 @@ SET_PANDAS_LOG_FORMET()
 class ST_Matching():
     def __init__(self,
                  net: GeoDigraph,
-                 dp_thres=5,
                  max_search_steps=2000,
                  max_search_dist=10000,
                  top_k_candidates=5,
                  cand_search_radius=50,
                  crs_wgs=4326,
                  crs_prj=900913,
-                 prob_thres=.8
+                 prob_thres=.8, 
+                 log_folder='./log'
                  ):
         self.net = net
-        self.dp_thres = dp_thres
         self.crs_wgs = crs_wgs
         self.crs_wgs = crs_wgs
-        self.dis_factor = DIS_FACTOR
         self.debug_folder = DEBUG_FOLDER
-        self.logger = make_logger('../log', console=False, level="INFO")
+        self.logger = make_logger(log_folder, console=False, level="INFO")
         if not os.path.exists(self.debug_folder):
             os.makedirs(self.debug_folder)
 
@@ -61,17 +59,16 @@ class ST_Matching():
         self.route_planning_max_search_steps = max_search_steps
         self.route_planning_max_search_dist = max_search_dist
 
-    @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False, eval=False):
         res = {'status': STATUS.UNKNOWN}
         
-        # simplify trajectory: (tolerance, 5 meters)
+        # simplify trajectory
         if simplify:
             ori_traj = traj
             traj = traj.copy()
-            traj = self._simplify(traj, tolerance=tolerance)
+            traj = self._simplify(traj, tolerance=tolerance) # tolerance, 5 meters
 
         # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
@@ -132,7 +129,7 @@ class ST_Matching():
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
             coord = cands.iloc[0].projection
-            res = {'eids': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
+            res = {'epath': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
             info.update(res)
             info['status'] = STATUS.ONE_POINT
             
@@ -141,12 +138,13 @@ class ST_Matching():
         return True, None
 
     def _spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
-        if not beam_search:
-            graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
-            prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
-        else:
+        if beam_search:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
             prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
+        else:
+            graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
+            prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
+
 
         metric['prob'] = prob
 
@@ -160,16 +158,16 @@ class ST_Matching():
             path = self.transform_res_2_path(res)
         
         if resample:
-            samples_1, path_points = resample_polyline_seq_to_point_seq(path.geometry, step=resample)
-            samples_2, traj_points = resample_point_seq(traj.geometry, step=resample)
+            _, path_coords_np = resample_polyline_seq_to_point_seq(path.geometry, step=resample)
+            _, traj_coords_np = resample_point_seq(traj.geometry, step=resample)
         else:
-            path_points = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
-            traj_points = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
+            path_coords_np = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
+            traj_coords_np = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
             
         eval_funs = {
-            'lcss': [lcss, (traj_points, path_points, eps)], 
-            'edr': [edr, (traj_points, path_points, eps)], 
-            'edp': [erp, (traj_points, path_points, g)]
+            'lcss': [lcss, (traj_coords_np, path_coords_np, eps)], 
+            'edr': [edr, (traj_coords_np, path_coords_np, eps)], 
+            'edp': [erp, (traj_coords_np, path_coords_np, g)]
         }
         _eval = eval_funs[metric]
 
@@ -219,7 +217,7 @@ class ST_Matching():
         if not info:
             return fig, ax
 
-        for att in ["eids", "step_0", "step_n", 'details']:
+        for att in ['epath', "step_0", "step_n", 'details']:
             if att not in info:
                 continue
             info.pop(att)
@@ -242,7 +240,7 @@ class ST_Matching():
         return fig, ax
 
     def transform_res_2_path(self, res):
-        path = self.net.get_edge(res['eids'], reset_index=True)
+        path = self.net.get_edge(res['epath'], reset_index=True)
         path.loc[0, 'geometry'] = LineString(res['step_0'])
         if 'step_n' in res:
             n = path.shape[0] - 1
@@ -252,14 +250,9 @@ class ST_Matching():
 
         return path
 
-    def get_points(self, traj, ids):
+    def update(self):
         return NotImplementedError
     
-    def points_to_polyline(self, points):
-        return NotImplementedError
-
-    def polyline_to_points(self, polyline):
-        return NotImplementedError
 
 
 if __name__ == "__main__":

@@ -43,7 +43,8 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
         traj = matcher.load_points(fn, compress=False)
         res = matcher.matching(traj, plot=False, top_k=5, dir_trans=True,
                                debug_in_levels=False)  # , save_fn = debug_folder / str(name).replace('geojson', 'jpg'))
-        y = res['eids']
+        # matcher.plot_result(traj, res)
+        y = res['epath']
         # preds[fn.name] = [int(i) for i in y]
 
         if np.array(y == labels[name]).all():

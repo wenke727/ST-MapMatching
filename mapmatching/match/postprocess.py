@@ -43,7 +43,7 @@ def get_path(net:GeoDigraph,
     keep_cond = np.append([True], eids[:-1] != eids[1:])
     eids_lst = eids[keep_cond].tolist()
 
-    res = {'eids': eids_lst}
+    res = {'epath': eids_lst}
     step_0, step_n = _get_first_and_last_step(cands, rList)
 
     # Case: one step

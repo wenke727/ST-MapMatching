@@ -7,6 +7,34 @@
 - [x] matching 轨迹压缩
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
+- [ ] 中断处理，match/viterbi.py
+
+## [V1.3.1] - 2023-1-17
+
+### Added
+
+- `graph.geograph.GeoDigraph`
+  - split_edge
+
+- `graph.base.Digraph`
+  - transform_epath_to_vpath
+  - transform_vpath_to_epath
+
+- `update_network`
+  - check_steps: 根据 mapmatching 的结果判断是否存在异常匹配的区间，进而判断`拓扑错误`或者`道路缺失`的情况
+
+
+### Changed
+
+- osmnet.parse_osm_xml
+  - _parrallel_collect_geoms, 并行处理获得 edge 的 geom
+- `graph`
+  - PathPlanning: `check_od` -> `has_edge` 
+- `match.spatialAnalysis.cal_dist_grob`
+  - 增加边界 gt.empty 逻辑
+  - Penalize slightly shorter paths， 增加一个系数 1.01，当 gt.d_euc / gt.w > 1.01 时候，才会 0.95 / dist
+
+- `geo.azimuth.cal_linestring_azimuth_cos_dist` 增加考虑边界因素，即 weight 为空列表的时候，调用 np.average(lst, weights=weights)  出错
 
 ## [V1.3.0] - 2023-1-11
 

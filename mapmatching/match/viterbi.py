@@ -13,7 +13,6 @@ def cal_prob_func(x, y, mode):
         return x *  y
 
   
-@timeit
 def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
     layer_ids = np.sort(cands.pid.unique())
     start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
@@ -32,11 +31,17 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     for idx, lvl in enumerate(layer_ids[:-1]):
         df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
         prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
+        
+        if df_layer.empty:
+            # FIXME 中断       
+            print('cannot set a frame with no defined index and a scalar')
+            logger.warning(f"Matching traj break at: {lvl}")
+            break
 
         timer.start()
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
+
         times.append(timer.stop())
-        
         df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
         _max_prob = df_layer['prob'].max()
 
@@ -47,7 +52,6 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
                                 .groupby('eid_1')\
                                 .head(1).reset_index()
         
-        # FIXME 中断       
         if _df.shape[0] == 0:
             continue
 
