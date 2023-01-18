@@ -4,7 +4,7 @@ from ..geo.coord.coordTransfrom_shp import coord_transfer
 from ..geo.douglasPeucker import simplify_trajetory_points
 
 
-def load_points(fn, compress: bool = False, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
+def load_points(fn, simplify: bool = False, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
     traj = gpd.read_file(fn, encoding='utf-8')
     if crs is not None:
         traj.set_crs(crs, allow_override=True, inplace=True)
@@ -15,7 +15,7 @@ def load_points(fn, compress: bool = False, dp_thres: int = None, crs: int = Non
 
     traj = coord_transfer(traj, in_sys, out_sys)
 
-    if compress:
+    if simplify:
         traj_bak = traj.copy()
         traj = traj = simplify_trajetory_points(traj, dp_thres, inplace=True)
     else:

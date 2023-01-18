@@ -51,8 +51,6 @@ def _filter_candidate(df: gpd.GeoDataFrame,
 
     return df
 
-
-@timeit
 def get_k_neigbor_edges(points: gpd.GeoDataFrame,
                         edges: gpd.GeoDataFrame,
                         top_k: int = 5,
@@ -131,6 +129,13 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     _df_edges  = edges.loc[cands_edge_idxs, edge_attrs]\
                        .reset_index().rename(columns={'index':'eid', 'geometry': 'edge_geom'})
     df_cand = pd.concat([_df_points, _df_edges], axis=1)
+
+    # check diff
+    cands_pid = set(df_cand.pid.unique())
+    all_pid = set(points.index.values)
+    diff_pid = all_pid.difference(cands_pid)
+    if diff_pid:
+        logger.warning(f"Points {list(diff_pid)} has not candidates")
 
     # time_lst['post query'] = timer.stop()
     # timer.start()

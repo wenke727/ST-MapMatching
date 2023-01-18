@@ -173,12 +173,12 @@ def _base_plot(df, column=None, categorical=True):
 
 def plot_matching_result(traj_points, path, net, column=None, categorical=True):
     _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
-    fig, ax = plot_geodata(_df, tile_alpha=.7, reset_extent=False, alpha=0)
+    fig, ax = plot_geodata(_df, figsize=(18, 12), tile_alpha=.7, reset_extent=False, alpha=0)
 
-    traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.4, color='b')
+    traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
     if path is not None:
-        path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.7)
+        path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.6)
 
     x0, x1, y0, y1 = ax.axis()
     zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})

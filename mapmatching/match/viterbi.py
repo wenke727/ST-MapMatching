@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from loguru import logger
+from collections import defaultdict
 
 from .spatialAnalysis import get_trans_prob_bet_layers
 from ..utils import Timer, timeit
@@ -11,65 +12,93 @@ def cal_prob_func(x, y, mode):
         return x +  y
     elif mode == '*':
         return x *  y
-
-  
-def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
-    layer_ids = np.sort(cands.pid.unique())
-    start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
-    
-    # Initialize
-    f_score = [start_prob]
-    path = {st: [(layer_ids[0], st)] for st in start_prob }
-    gt_beam = []
-
-    # Run Viterbi when t > 0
-    prev_states = list(start_prob.keys())
-    times = []
-    timer = Timer()
-    
-    # TODO 使用回溯的方式，测试下是够有性能上的提升
-    for idx, lvl in enumerate(layer_ids[:-1]):
-        df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
-        prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1)])
-        
-        if df_layer.empty:
-            # FIXME 中断       
-            print('cannot set a frame with no defined index and a scalar')
-            logger.warning(f"Matching traj break at: {lvl}")
-            break
-
-        timer.start()
-        df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
-
-        times.append(timer.stop())
-        df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
-        _max_prob = df_layer['prob'].max()
-
-        # prune -> pick the most likely one
-        _df = df_layer[['prob']].sort_values('prob', ascending=False)\
-                                .head(100 if idx < trim_layer else 5)\
+ 
+def prune_layer(df_layer, prune=True, trim_factor=.75):
+    # prune -> pick the most likely one
+    _max_prob = df_layer['prob'].max()
+    df = df_layer[['prob']].sort_values('prob', ascending=False)\
+                                .head(100 if prune else 5)\
                                 .query(f"prob > {_max_prob * trim_factor}")\
                                 .groupby('eid_1')\
                                 .head(1).reset_index()
-        
-        if _df.shape[0] == 0:
+    
+    return df
+
+def reconstruct_path(f_score, prev_path):
+    epath = []
+    state = None
+    for lvl in range(len(f_score) - 1, 0, -1):
+        if state is None:
+            state = get_max_state(f_score, lvl)
+            if state is None:
+                continue
+
+        cur = (lvl, state)
+        if lvl not in prev_path or state not in prev_path[lvl]:
+            state = None
             continue
+        prev = prev_path[lvl].get(state)
+        if not epath or cur != epath[-1]:
+            epath.append(cur)
+        epath.append(prev)
+        state = prev[1]
+
+    epath = epath[::-1]
+
+    return epath
+
+def get_max_state(f_score, lvl):
+    f = f_score[lvl]
+    if len(f) == 0:
+        return None
+    return max(f, key=f.get)
+
+def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
+    # Initialize
+    times = []
+    timer = Timer()
+
+    gt_beam = []
+    break_layers = []
+    layer_ids = np.sort(cands.pid.unique())
+    start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
+    f_score = [start_prob]
+    prev_path = defaultdict(dict)
+    prev_path[0] = {st: None for st in start_prob}
+    prev_states = list(start_prob.keys())
+
+    for idx, lvl in enumerate(layer_ids[:-1]):
+        # print(f"lvl: {lvl}, prev_states: {prev_states}")
+        df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
+        
+        # FIXME 中断
+        if df_layer.empty:
+            print(f"Matching traj break at: {idx} / {lvl}!!!")
+            break_layers.append(layer_ids[idx - 1])
+            df_layer = gt.query(f"pid_0 == @lvl")
+            prev_probs = 0 if mode == '+' else 1
+        else:
+            prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1) if i in f_score[-1]])
+
+        df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
+        df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
+        _df = prune_layer(df_layer, idx < trim_layer, trim_factor)
 
         # post-process
-        prob_dict = _df[['eid_1', 'prob']].set_index('eid_1')['prob'].to_dict()
-        new_path = _df[['eid_1', "eid_0"]].set_index("eid_1")\
-                                          .apply(lambda x: path[x.eid_0] + [(layer_ids[idx+1], x.name)], axis=1)\
-                                          .to_dict()
-        
-        path = new_path
-        prev_states = list(_df.eid_1.unique())
+        _df = _df.set_index('eid_1')
+        for name, item in _df.iterrows():
+            prev_path[idx + 1][name] = (idx, int(item.eid_0))
+        prev_states = list(_df.index.unique())
+        f_score.append(_df['prob'].to_dict())
         gt_beam.append(df_layer)
-        f_score.append(prob_dict)
 
-    end_state = max(f_score[-1] ,key=f_score[-1].get)
-    end_prob = f_score[-1][end_state]
+    end_state = get_max_state(f_score, -1)
+    end_prob = f_score[-1][end_state] if end_state is not None else 0
     
-    rList = cands.set_index(['pid', 'eid']).loc[path[end_state], [ 'src', 'dst']].reset_index()
+    # epath
+    epath = reconstruct_path(f_score, prev_path)
+    epath = [(layer_ids[idx], eid) for idx, eid in epath ]
+    rList = cands.set_index(['pid', 'eid']).loc[epath, ['src', 'dst']].reset_index()
     
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
@@ -79,6 +108,7 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     return end_prob, rList, gt_beam
 
 
+""" normal """
 def viterbi_decode(nodes, trans):
     """
     Viterbi算法求最优路径
@@ -118,10 +148,8 @@ def viterbi_decode(nodes, trans):
         idx = best_path[i+1]
         best_path[i] = paths[i][idx]
 
-
 def get_trans_prob(trans_prob, layer_id):
     return trans_prob[layer_id]
-
 
 def decode(observations, states, start_prob, trans_prob, emit_prob, mode='+'):
     def _formula(x, y):
@@ -171,7 +199,6 @@ def decode(observations, states, start_prob, trans_prob, emit_prob, mode='+'):
     
     return prob, path[end_state]
 
-
 def prepare_viterbi_input(cands, gt):
     states = cands.eid.unique()
     observations = cands.pid.unique()
@@ -186,7 +213,6 @@ def prepare_viterbi_input(cands, gt):
     
     return states, observations, start_prob, trans_prob, emit_prob
         
-
 def process_viterbi_pipeline(cands, gt):
     states, observations, start_prob, trans_prob, emit_prob = prepare_viterbi_input(cands, gt)
     prob, rList = decode(observations, states, start_prob, trans_prob, emit_prob)

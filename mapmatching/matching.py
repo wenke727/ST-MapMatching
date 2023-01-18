@@ -42,13 +42,14 @@ class ST_Matching():
                  crs_wgs=4326,
                  crs_prj=900913,
                  prob_thres=.8, 
-                 log_folder='./log'
+                 log_folder='./log',
+                 console=True,
                  ):
         self.net = net
         self.crs_wgs = crs_wgs
         self.crs_wgs = crs_wgs
         self.debug_folder = DEBUG_FOLDER
-        self.logger = make_logger(log_folder, console=False, level="INFO")
+        self.logger = make_logger(log_folder, console=console, level="INFO")
         if not os.path.exists(self.debug_folder):
             os.makedirs(self.debug_folder)
 
@@ -60,8 +61,8 @@ class ST_Matching():
         self.route_planning_max_search_dist = max_search_dist
 
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
-                 simplify=True, tolerance=5, plot=False, save_fn=None,
-                 debug_in_levels=False, details=False, eval=False):
+                 simplify=False, tolerance=5, plot=False, save_fn=None,
+                 debug_in_levels=False, details=False, metric=None):
         res = {'status': STATUS.UNKNOWN}
         
         # simplify trajectory
@@ -107,16 +108,20 @@ class ST_Matching():
         if plot or save_fn:
             fig, ax = self.plot_result(traj, res)
             if simplify:
-                ori_traj.plot(ax=ax, color='gray', alpha=.3)
+                ori_traj.plot(ax=ax, color='gray', alpha=.5)
                 traj.plot(ax=ax, color='yellow', alpha=.5)
             if not plot:
-               plt.close() 
+               plt.close()
             if save_fn:
                 fig.savefig(save_fn, dpi=300, bbox_inches='tight', pad_inches=0.02)
 
         if debug_in_levels:
             self.matching_debug(traj, graph)
         
+        if metric is not None:
+            res['metric'] = self.eval(traj, res, metric=metric)
+            print(f"{metric}: {res['metric']}")
+
         return res
 
     def _is_valid(self, traj, cands, info, eps = 1e-7):
@@ -140,6 +145,7 @@ class ST_Matching():
     def _spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
         if beam_search:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
+            graph_bak = graph.copy()
             prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
         else:
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
@@ -176,10 +182,10 @@ class ST_Matching():
     def project(self, traj_panos, path, keep_attrs=None):
         return project_traj_points_to_network(traj_panos, path, self.net, keep_attrs)
 
-    def load_points(self, fn, compress=False, tolerance: int = 10,
+    def load_points(self, fn, simplify=False, tolerance: int = 10,
                     crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
         
-        traj, _ = load_points(fn, compress, tolerance, crs, in_sys, out_sys)
+        traj, _ = load_points(fn, simplify, tolerance, crs, in_sys, out_sys)
         
         return traj
 

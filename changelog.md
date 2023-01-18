@@ -9,6 +9,22 @@
 - [ ] ALT 算法，加速最短路搜索速度
 - [ ] 中断处理，match/viterbi.py
 
+## [V1.3.2] - 2023-1-18
+
+### Added
+
+- `mapmatching/match/geometricAnalysis.get_k_neigbor_edges` 增加识别没有candidates 的点
+
+### Changed
+
+- `data/trajs` 测试数据样例的数据从 epath 切换成 vpath，减少因为不同网络初始化对于结果的影响
+- `mapmatching/match/viterbi`
+  - find_matched_sequence: 支持处理**中断**情况
+  - reconstruct_path：还原 epath
+  - get_max_state
+  - prune_layer:  beam search 中的剪枝操作
+- mapmatching/matching.match 增加 metric 参数控制评估与否
+
 ## [V1.3.1] - 2023-1-17
 
 ### Added
@@ -22,7 +38,6 @@
 
 - `update_network`
   - check_steps: 根据 mapmatching 的结果判断是否存在异常匹配的区间，进而判断`拓扑错误`或者`道路缺失`的情况
-
 
 ### Changed
 
@@ -51,11 +66,12 @@
 
   - graph 和 od_2_eid 的属性合并
 
-     graph 存储一个 字典，目前设有 eid 和 cost；原 graph 存储 cost， od_2_eid 存储 eid
+    graph 存储一个 字典，目前设有 eid 和 cost；原 graph 存储 cost， od_2_eid 存储 eid
 
   - `transform_node_seq_to_edge_seq` 更名 `transform_vpath_to_epath`
 
   -  transform_edge_seq_to_polyline -> transform_epath_to_linestring
+
   - search 返回值 属性变更，epath，vpath，path分别代表 途径的边，途径的点，规划路径的 geom(含 first_step 和 last_step)
 
 - astar
@@ -142,6 +158,7 @@
   merge_coords_intervals_on_same_edge 合并坐标序列区间
 
 - match
+
   - matching 部分代码子函数化
   - plot_result 增加概率展示信息
 
@@ -195,7 +212,7 @@
 
 - ST_Matching
   -  `project_traj_points_to_network`
-  - load_traj
+  -  load_traj
 
 ### Changed
 
@@ -275,7 +292,7 @@
 
   - analyse_geometric_info 
 
-     `edge_keys` 变更为`[]`, 因为对于同一个 eid 中的不同路段，最优的候选路段不一定是最近的路段
+    `edge_keys` 变更为`[]`, 因为对于同一个 eid 中的不同路段，最优的候选路段不一定是最近的路段
 
   - cal_observ_prob
 
@@ -359,6 +376,7 @@
   ```
 
 - astar 的 memo 经测试，耗时可以降低 2 个数量级
+
 - 统一 `parse_osm_xml`的 df_edges `eid` 和 `index`值 
 
 ## [V1.1.6] - 2022-10-19

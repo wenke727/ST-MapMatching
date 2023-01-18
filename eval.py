@@ -38,26 +38,26 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
     timer = Timer()
     timer.start()
 
-    for fn in tqdm(trajs):
+    for fn in tqdm(sorted(trajs)):
         name = fn.name
+        print(name)
         traj = matcher.load_points(fn, compress=False)
-        res = matcher.matching(traj, plot=False, top_k=5, dir_trans=True,
-                               debug_in_levels=False)  # , save_fn = debug_folder / str(name).replace('geojson', 'jpg'))
+        save_fn = debug_folder / str(name).replace('geojson', 'jpg') if debug_folder else None
+        res = matcher.matching(traj, plot=False, top_k=5, dir_trans=True, debug_in_levels=False, save_fn=None)  # 
         # matcher.plot_result(traj, res)
-        y = res['epath']
-        # preds[fn.name] = [int(i) for i in y]
+        vpath = net.transform_epath_to_vpath(res['epath'])
+        preds[fn.name] = [int(i) for i in vpath]
 
-        if np.array(y == labels[name]).all():
+        if np.array(vpath == labels[name]).all():
             hit += 1
         else:
             errors[name] = fn
 
-    print(
-        f"Prcision: {hit / (hit + len(errors)) * 100:.1f} %, time cost: {timer.stop():.2f} s")
+    print(f"Prcision: {hit / (hit + len(errors)) * 100:.1f} %, time cost: {timer.stop():.2f} s")
     if len(errors):
         print(f"Errors: {errors.keys()}")
 
-    return
+    return preds
 
 
 if __name__ == "__main__":
@@ -66,13 +66,6 @@ if __name__ == "__main__":
     net = build_geograph(ckpt = DATA_FOLDER / 'network/Shenzhen_graph_pygeos.ckpt')
     matcher = ST_Matching(net=net)
 
-    evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
+    preds = evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
     
-    # net.search_memo.keys()
-
-    # import pandas as pd
-    # pd.DataFrame.from_dict(net.search_memo, orient='index')
-    # from mapmatching.utils.serialization import save_checkpoint
-
-    # save_checkpoint(net.search_memo, './data/debug/astar_search_memo.pkl')
-
+    # save_lables(preds, DATA_FOLDER / "trajs/gt_vpath.json")

@@ -17,7 +17,6 @@ def check_each_step(matcher:ST_Matching, traj:gpd.GeoDataFrame, idx:int, factor=
     pos = matcher.matching(seg.reset_index(drop=True))
     neg = matcher.matching(seg[::-1].reset_index(drop=True))
 
-
     if neg['probs']['prob'] > pos['probs']['prob'] * factor:
         eids = neg['epath']
         way_ids = net.get_edge(eids, 'way_id').unique()
