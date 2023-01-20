@@ -26,6 +26,11 @@ res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, details=True)
 """step 4: eval"""
 matcher.eval(traj, res, resample=5, eps=10)
 
+# 0.0064 query.iterrows
+# 0.0052 iterrows
+# 0.0040 pandas operaror
+# 0.0012 itertuples() + heapq
+
 #%%
 vpath = net.transform_epath_to_vpath(res['epath'])
 vpath

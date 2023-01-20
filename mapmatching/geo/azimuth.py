@@ -190,13 +190,16 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if offset:
         lst = (lst + 1) / 2
         
-    if not weight or np.sum(weight) == 0:
+    if not weight:
         val = np.mean(lst)
     else:
         # weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 
         coords = coords[:, ::-1]
         weights = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
-        val = np.average(lst, weights=weights)
+        if np.sum(weights) == 0:
+            val = np.mean(lst)
+        else:
+            val = np.average(lst, weights=weights)
     
     return val
 

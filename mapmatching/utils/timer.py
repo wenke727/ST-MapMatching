@@ -35,7 +35,7 @@ def timeit(func):
         start = time.time()
         res = func(*args, **kwargs)
         end = time.time()
-        _log = f"{func.__name__}, cost: {end - start: .3f} s"
+        _log = f"{func.__name__}, cost: {(end - start) * 1000: .2f} ms"
         print(_log)
         logger.info(_log)
         

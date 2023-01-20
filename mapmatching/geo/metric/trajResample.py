@@ -7,6 +7,9 @@ from ..haversineDistance import cal_points_geom_seq_distacne
 
 
 def resample_point_seq(points, step=2, last=True):
+    if points.shape[0] == 1:
+        return gpd.GeoDataFrame(points), np.array([points.iloc[0].coords[0]])
+
     dist, coords = cal_points_geom_seq_distacne(points)
     dxdy = coords[1:] - coords[:-1]
 

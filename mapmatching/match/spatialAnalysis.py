@@ -97,7 +97,9 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     dist[mask] = 0.95 / dist[mask]
     # Penalize flag_2_idxs
     gt.loc[:, 'dist_prob'] = dist
-    gt.loc[flag_2_idxs, 'dist_prob'] *= .99
+    # FIXME dist_prob, 但两个点落在同一个节点上的时候为 0
+    gt.loc[flag_2_idxs, 'dist_prob'] *= 1.01
+    gt.loc[flag_1_idxs, 'dist_prob'] *= 1.02
 
     return gt
 
@@ -106,9 +108,9 @@ def cal_trans_prob(gt, geometry, dir_trans):
         gt.loc[:, 'path'] = merge_steps(gt)
         cal_dir_prob(gt, geometry)
         gt.loc[:, 'trans_prob'] = gt.dist_prob * gt.dir_prob
-        return gt
-
-    gt.loc[:, 'trans_prob'] = gt.dist_prob
+    else:
+        gt.loc[:, 'trans_prob'] = gt.dist_prob
+    
     return gt
 
 def analyse_spatial_info(geograph: GeoDigraph,

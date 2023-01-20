@@ -41,12 +41,12 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
     for fn in tqdm(sorted(trajs)):
         name = fn.name
         print(name)
-        traj = matcher.load_points(fn, compress=False)
+        traj = matcher.load_points(fn, simplify=False)
         save_fn = debug_folder / str(name).replace('geojson', 'jpg') if debug_folder else None
-        res = matcher.matching(traj, plot=False, top_k=5, dir_trans=True, debug_in_levels=False, save_fn=None)  # 
+        res = matcher.matching(traj, simplify=True, plot=False, dir_trans=True, debug_in_levels=False, save_fn=None)  # 
         # matcher.plot_result(traj, res)
         vpath = net.transform_epath_to_vpath(res['epath'])
-        preds[fn.name] = [int(i) for i in vpath]
+        preds[fn.name] = [int(i) for i in res['epath']]
 
         if np.array(vpath == labels[name]).all():
             hit += 1
@@ -68,4 +68,4 @@ if __name__ == "__main__":
 
     preds = evaluation(matcher, trajs_folder, debug_folder=Path("./debug"))
     
-    # save_lables(preds, DATA_FOLDER / "trajs/gt_vpath.json")
+    save_lables(preds, DATA_FOLDER / "trajs/gt_epath.json")

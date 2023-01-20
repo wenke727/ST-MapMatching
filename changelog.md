@@ -7,13 +7,43 @@
 - [x] matching 轨迹压缩
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
-- [ ] 中断处理，match/viterbi.py
+- [x] 中断处理，match/viterbi.py
 
-## [V1.3.2] - 2023-1-18
+## [V1.3.3] - 2023-1-20
+
+### Added
+
+- geo.osps.check_duplicate_points， 检测坐标序列中是否存在重复的节点
+
+### Changed
+
+- resample_point_seq
+
+  增加边界条件：`仅有一个节点`的情况
+
+- cal_linestring_azimuth_cos_dis
+
+  增加边界条件：weights 的和为 0 的情况，如两个重叠节点
+
+- mapmatching.match.candidatesGraph._cal_traj_params
+
+  增加检测重复节点的逻辑
+
+- mapmatching/match/spatialAnalysis.**cal_dist_prob**
+
+  梳理 落在同一个路段上的两种情况增强因子, 初定为{1: 1.02, 2: 1.01}
+
+## [V1.3.2] - 2023-1-20
 
 ### Added
 
 - `mapmatching/match/geometricAnalysis.get_k_neigbor_edges` 增加识别没有candidates 的点
+
+- mapmatching/match/viterbi.find_matched_sequence
+
+  - prune_layer：使用 heapq 逻辑，耗时为原来的 1/3 ~ 1/2 
+
+  - reconstruct_path： 支持 HMM 中断后，还原路径
 
 ### Changed
 

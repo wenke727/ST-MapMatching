@@ -7,13 +7,19 @@ from .status import CANDS_EDGE_TYPE
 from ..geo.azimuth import azimuthAngle_vector
 
 
-def _cal_traj_params(points, move_dir=True):
+def _cal_traj_params(points, move_dir=True, check=False):
     # from ..geo.misc import cal_points_geom_seq_distacne
     coords = points.geometry.apply(lambda x: [x.y, x.x]).values.tolist()
     coords = np.array(coords)
 
     dist = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
     idxs = points.index
+    
+    if check:
+        zero_idxs = np.where(dist==0)[0]
+        if len(zero_idxs):
+            print(f"Exists dumplicates points: {[(i, i+1) for i in zero_idxs]}")
+        
     _dict = {'pid_0': idxs[:-1],
              'pid_1':idxs[1:],
              'd_euc': dist}
@@ -33,7 +39,8 @@ def _identify_edge_flag(gt):
     gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
-    cond = (gt['dist'] - gt['first_step_len']) < gt['last_step_len']
+    # FIXME `<` or `<=`
+    cond = (gt['dist'] - gt['first_step_len']) <= gt['last_step_len']
 
     same_edge_normal = same_edge & cond
     gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
@@ -69,7 +76,7 @@ def construct_graph( points,
     """
     layer_ids = np.sort(cands.pid.unique())
     prev_layer_dict = {cur: layer_ids[i]
-                       for i, cur in enumerate(layer_ids[1:])}
+                          for i, cur in enumerate(layer_ids[1:])}
     prev_layer_dict[layer_ids[0]] = -1
 
     # left
@@ -90,8 +97,8 @@ def construct_graph( points,
 
     _identify_edge_flag(gt)
 
-    # FIXME There is a situation where the node does not match,             
-    # the current strategy is to ignore it, and there is a problem of the order
+    # There is a situation where the node does not match,             
+    # the current strategy is to ignore it, and maybe it has a problem of the order
     traj_info = _cal_traj_params(
         points.loc[cands.pid.unique()], move_dir=dir_trans)
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])

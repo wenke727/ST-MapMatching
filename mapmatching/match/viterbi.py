@@ -1,3 +1,4 @@
+import heapq
 import numpy as np
 import pandas as pd
 from loguru import logger
@@ -12,32 +13,75 @@ def cal_prob_func(x, y, mode):
         return x +  y
     elif mode == '*':
         return x *  y
- 
-def prune_layer(df_layer, prune=True, trim_factor=.75):
+
+def merge_k_heapq(arrays, count=100):
+    queue, res = [], []
+    eid_set = set()
+    
+    for eid, arr in arrays.items():
+        if len(arr) == 0:
+            continue
+        heapq.heappush(queue, (arr[0][0], eid))
+    
+    while queue and count:
+        _, eid = heapq.heappop(queue)
+        prob, keys = heapq.heappop(arrays[eid])
+        count -= 1
+        
+        if arrays[eid]:
+            heapq.heappush(queue, (arrays[eid][0][0], eid))
+        if eid not in eid_set:
+            res.append(list(keys) + [-prob])
+        eid_set.add(eid)
+        
+    return res
+
+def prune_layer(df_layer, prune=True, trim_factor=.75, use_pandas=False):
     # prune -> pick the most likely one
     _max_prob = df_layer['prob'].max()
-    df = df_layer[['prob']].sort_values('prob', ascending=False)\
-                                .head(100 if prune else 5)\
-                                .query(f"prob > {_max_prob * trim_factor}")\
-                                .groupby('eid_1')\
-                                .head(1).reset_index()
     
+    if use_pandas:
+        df = df_layer[['prob']].sort_values('prob', ascending=False)\
+                               .head(100 if prune else 5)\
+                               .query(f"prob > {_max_prob * trim_factor}")\
+                               .groupby('eid_1')\
+                               .head(1).reset_index()
+    else:
+        thred = _max_prob * trim_factor
+        arrs = defaultdict(list)
+        # for name, item in df_layer[['prob']].iterrows():
+        #     if item['prob'] <= thred:
+        #         continue
+        #     heapq.heappush(arrs[name[2]], (-item['prob'], name))
+
+        for row in df_layer[['prob']].itertuples():
+            idx, prob = getattr(row, "Index"), getattr(row, "prob")
+            if prob < thred:
+                continue
+            heapq.heappush(arrs[idx[2]], (-prob, idx))
+
+        records = merge_k_heapq(arrs, 100 if prune else 5)   
+        df = pd.DataFrame(records, columns=['pid_0', 'eid_0', 'eid_1', 'prob'])
+
     return df
 
 def reconstruct_path(f_score, prev_path):
     epath = []
     state = None
-    for lvl in range(len(f_score) - 1, 0, -1):
+    end_probs = []
+
+    for idx in range(len(f_score) - 1, 0, -1):
         if state is None:
-            state = get_max_state(f_score, lvl)
+            state = get_max_state(f_score, idx)
             if state is None:
                 continue
+            end_probs.append(f_score[idx][state])
 
-        cur = (lvl, state)
-        if lvl not in prev_path or state not in prev_path[lvl]:
+        cur = (idx, state)
+        if idx not in prev_path or state not in prev_path[idx]:
             state = None
             continue
-        prev = prev_path[lvl].get(state)
+        prev = prev_path[idx].get(state)
         if not epath or cur != epath[-1]:
             epath.append(cur)
         epath.append(prev)
@@ -45,13 +89,17 @@ def reconstruct_path(f_score, prev_path):
 
     epath = epath[::-1]
 
-    return epath
+    return epath, sum(end_probs) / len(end_probs)
 
-def get_max_state(f_score, lvl):
-    f = f_score[lvl]
+def get_max_state(f_score, idx):
+    f = f_score[idx]
     if len(f) == 0:
         return None
     return max(f, key=f.get)
+
+def print_level(df_layer):
+    f = lambda x: sorted(df_layer.index.get_level_values(x).unique())
+    return f"{f(1)} -> {f(2)}"
 
 def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
     # Initialize
@@ -59,7 +107,6 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     timer = Timer()
 
     gt_beam = []
-    break_layers = []
     layer_ids = np.sort(cands.pid.unique())
     start_prob = cands.query("pid == 0").set_index('eid')['observ_prob'].to_dict()
     f_score = [start_prob]
@@ -70,19 +117,17 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
     for idx, lvl in enumerate(layer_ids[:-1]):
         # print(f"lvl: {lvl}, prev_states: {prev_states}")
         df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
-        
-        # FIXME 中断
         if df_layer.empty:
-            print(f"Matching traj break at: {idx} / {lvl}!!!")
-            break_layers.append(layer_ids[idx - 1])
+            print(f"Matching traj break at idx: {idx}, level:  {lvl}")
             df_layer = gt.query(f"pid_0 == @lvl")
             prev_probs = 0 if mode == '+' else 1
         else:
-            prev_probs = np.array([f_score[-1][i] for i in df_layer.index.get_level_values(1) if i in f_score[-1]])
+            prev_probs = np.array(
+                [f_score[-1][i] for i in df_layer.index.get_level_values(1)])
 
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
         df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
-        _df = prune_layer(df_layer, idx < trim_layer, trim_factor)
+        _df = prune_layer(df_layer, idx >= trim_layer, trim_factor)
 
         # post-process
         _df = _df.set_index('eid_1')
@@ -92,17 +137,15 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
         f_score.append(_df['prob'].to_dict())
         gt_beam.append(df_layer)
 
-    end_state = get_max_state(f_score, -1)
-    end_prob = f_score[-1][end_state] if end_state is not None else 0
-    
     # epath
-    epath = reconstruct_path(f_score, prev_path)
-    epath = [(layer_ids[idx], eid) for idx, eid in epath ]
-    rList = cands.set_index(['pid', 'eid']).loc[epath, ['src', 'dst']].reset_index()
+    epath, end_prob = reconstruct_path(f_score, prev_path)
+    epath = ((layer_ids[idx], eid) for idx, eid in epath)
+    rList = cands.set_index(['pid', 'eid'])\
+                 .loc[epath, ['src', 'dst']].reset_index()
     
     gt_beam = pd.concat(gt_beam)
     ratio = gt_beam.shape[0] / gt.shape[0]
-    _log = f"Route planning time cost: {np.sum(times):.3f} s, trim ratio: {(1 - ratio)*100:.1f} %"
+    _log = f"Route planning time cost: {np.sum(times):.3f} s, trim ratio: {(1 - ratio) * 100:.1f} %"
     getattr(logger, level)(_log)
     
     return end_prob, rList, gt_beam

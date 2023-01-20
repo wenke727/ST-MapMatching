@@ -9,6 +9,7 @@ from shapely.geometry import LineString
 
 from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
+from .geo.ops import check_duplicate_points
 from .geo.douglasPeucker import simplify_trajetory_points
 from .geo.metric.trajResample import resample_polyline_seq_to_point_seq, resample_point_seq
 
@@ -62,7 +63,7 @@ class ST_Matching():
 
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=False, tolerance=5, plot=False, save_fn=None,
-                 debug_in_levels=False, details=False, metric=None):
+                 debug_in_levels=False, details=False, metric=None, check_duplicate=False):
         res = {'status': STATUS.UNKNOWN}
         
         # simplify trajectory
@@ -70,7 +71,9 @@ class ST_Matching():
             ori_traj = traj
             traj = traj.copy()
             traj = self._simplify(traj, tolerance=tolerance) # tolerance, 5 meters
-
+        if check_duplicate:
+            traj = check_duplicate_points(traj)
+            
         # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
         cands = analyse_geometric_info(
