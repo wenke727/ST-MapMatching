@@ -228,8 +228,7 @@ class GeoDigraph(Digraph):
         return super().remove_edge(src, dst)
 
     def split_edge(self, eid):
-        # TODO 
-        # !  delete multi-edges 
+        # TODO delete multi-edges 
         idxs = check_multi_edges(net)
 
         keep_idx = df_edges.loc[eid]\

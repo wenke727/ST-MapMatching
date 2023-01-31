@@ -49,11 +49,6 @@ def prune_layer(df_layer, prune=True, trim_factor=.75, use_pandas=False):
     else:
         thred = _max_prob * trim_factor
         arrs = defaultdict(list)
-        # for name, item in df_layer[['prob']].iterrows():
-        #     if item['prob'] <= thred:
-        #         continue
-        #     heapq.heappush(arrs[name[2]], (-item['prob'], name))
-
         for row in df_layer[['prob']].itertuples():
             idx, prob = getattr(row, "Index"), getattr(row, "prob")
             if prob < thred:

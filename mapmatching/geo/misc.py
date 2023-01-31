@@ -51,12 +51,16 @@ def linestring_length(df:gpd.GeoDataFrame, add_to_att=False, key='length'):
 
 """ Distance helper """
 def geom_series_distance(col1, col2, in_crs=4326, out_crs=900913):
+    assert isinstance(col1, gpd.GeoSeries) and isinstance(col2, gpd.GeoSeries)
+
+    if in_crs == out_crs:
+        return col1.distance(col2)
+
     if isinstance(col1, pd.Series):
         a = gpd.GeoSeries(col1).set_crs(in_crs, allow_override=True).to_crs(out_crs)
     if isinstance(col2, pd.Series):
         b = gpd.GeoSeries(col2).set_crs(in_crs, allow_override=True).to_crs(out_crs)
     
-    assert isinstance(a, gpd.GeoSeries) and isinstance(b, gpd.GeoSeries)
     return a.distance(b)
 
 

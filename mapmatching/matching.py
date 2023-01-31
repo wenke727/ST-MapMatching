@@ -1,5 +1,5 @@
 import os
-os.environ["USE_PYGEOS"] = "1"
+# os.environ["USE_PYGEOS"] = "0"
 
 import numpy as np
 from copy import deepcopy

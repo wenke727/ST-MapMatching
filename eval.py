@@ -40,7 +40,6 @@ def evaluation(matcher, trajs_folder, debug_folder=None):
 
     for fn in tqdm(sorted(trajs)):
         name = fn.name
-        print(name)
         traj = matcher.load_points(fn, simplify=False)
         save_fn = debug_folder / str(name).replace('geojson', 'jpg') if debug_folder else None
         res = matcher.matching(traj, simplify=True, plot=False, dir_trans=True, debug_in_levels=False, save_fn=None)  # 

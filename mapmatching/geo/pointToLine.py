@@ -1,8 +1,8 @@
-import pandas as pd
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from haversine import haversine, haversine_vector, Unit
+from .haversineDistance import cal_points_seq_distance
 
 
 def get_foot_point(point, line_p1, line_p2):
@@ -246,3 +246,86 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     
     return res
 
+
+def project_point_2_line(node:Point, polyline:LineString, plot=False):
+    """Linear referencing
+
+    Args:
+        node (Point): _description_
+        polyline (LineString): _description_
+        plot (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        _type_: _description_
+    
+    Refs:
+        https://shapely.readthedocs.io/en/stable/manual.html#linear-referencing-methods
+    """
+    dist = polyline.project(node)
+    cut_point = polyline.interpolate(dist)
+    seg_0, seg_1 = cut(polyline, dist)
+
+    # FIXME the distance along this geometric object to a point nearest the other object.
+    coords = np.array(polyline.coords)
+    len, total_len = cal_points_seq_distance(coords)
+    normalized_dist = dist / polyline.length
+
+    len_0 = total_len * normalized_dist
+    len_1 = total_len - len_0
+
+    if plot:
+        ax = gpd.GeoDataFrame({
+            'geometry':[node, polyline],
+            'name': ['seg_0', 'seg_1']
+        }).plot(color='red', alpha=.2)
+
+        gpd.GeoDataFrame({
+            'geometry':[cut_point],
+        }).plot(ax=ax, color='b')
+
+        gpd.GeoDataFrame({
+            'geometry':[LineString(seg_0) if seg_0 is not None else None, 
+                        LineString(seg_1) if seg_1 is not None else None],
+            'name': ['seg_0', 'seg_1']
+        }).plot(legend=True, column='name', ax=ax, zorder=9, linestyle='--')
+    
+    return seg_0, seg_1, len_0, len_1
+
+def cut(line, distance):
+    # Cuts a line in two at a distance from its starting point
+    if distance <= 0.0:
+        return [None, LineString(line)]
+    if distance >= line.length:
+        return [LineString(line), None]
+    
+    coords = list(line.coords)
+    for i, p in enumerate(coords):
+        pd = line.project(Point(p))
+        if pd == distance:
+            return [
+                LineString(coords[:i+1]),
+                LineString(coords[i:])]
+        if pd > distance:
+            cp = line.interpolate(distance)
+            return [
+                LineString(coords[:i] + [(cp.x, cp.y)]),
+                LineString([(cp.x, cp.y)] + coords[i:])]
+
+if __name__ == "__main__":
+    
+    from shapely import wkt
+    # case 0
+    node = wkt.loads('POINT (113.934194 22.577979)')
+    # case 1
+    # node = wkt.loads('POINT (113.934144 22.577979)')
+
+    # case 0, 创科路/打石二路路口
+    polyline = wkt.loads("LINESTRING (113.934186 22.57795, 113.934227 22.577982, 113.934274 22.578013, 113.934321 22.578035, 113.934373 22.578052, 113.934421 22.57806, 113.93448 22.578067)")
+    # point_to_polyline_process_wgs(node, polyline, plot=True)
+
+    # 63 us
+    seg_0, seg_1, len_0, len_1 = project_point_2_line(node, polyline, True)
+    cal_points_seq_distance(np.array(seg_0.coords))
+
+    # 180 us
+    project_point_to_polyline(node, polyline, plot=False)

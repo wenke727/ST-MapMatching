@@ -1,2 +1,5 @@
 geopandas==0.12.1
 pygeos==0.13
+sqlalchemy==1.4.46
+psycopg2==2.9.5
+geoalchemy2 ==0.13.0

@@ -9,6 +9,20 @@
 - [ ] ALT 算法，加速最短路搜索速度
 - [x] 中断处理，match/viterbi.py
 
+## [V1.3.4] - 2023-1-31
+
+### Changed
+
+- geo.haversineDistance.haversine_vector_xy
+
+- geo.pointToLine.project_point_2_line
+
+  使用 `shapely`的 [linear reference](https://shapely.readthedocs.io/en/stable/manual.html#linear-referencing-methods)
+
+- osmnet.parallel_offset_edge
+
+  因 shapely 升级到 2.0 后接口有所调整，增加版本控制逻辑
+
 ## [V1.3.3] - 2023-1-20
 
 ### Added

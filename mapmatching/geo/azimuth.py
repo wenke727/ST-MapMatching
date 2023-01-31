@@ -3,7 +3,6 @@ import numpy as np
 from shapely import wkt
 from haversine import haversine, haversine_vector, Unit
 from shapely.geometry import Point, LineString
-from .haversineDistance import coords_pair_dist
 
 
 def azimuth_diff(a, b, unit='radian'):
@@ -193,7 +192,6 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if not weight:
         val = np.mean(lst)
     else:
-        # weights = np.array([coords_pair_dist(coords[i], coords[i+1], xy=True) for i in range(len(coords)-1)]) 
         coords = coords[:, ::-1]
         weights = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
         if np.sum(weights) == 0:

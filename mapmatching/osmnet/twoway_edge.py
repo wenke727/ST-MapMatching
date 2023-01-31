@@ -1,3 +1,4 @@
+import shapely
 import numpy as np
 import pandas as pd
 from loguru import logger
@@ -91,7 +92,9 @@ def parallel_offset_edge(record:pd.Series, distance=1.25/110/1000, process_two_p
     
     try:
         # shapely 2.0 以上，`[::-1]` 需删除
-        offset_coords = geom.parallel_offset(distance, side='right').coords[::-1]
+        offset_coords = geom.parallel_offset(distance, side='right').coords
+        if int(shapely.__version__.split('.')[0]) < 2:
+            offset_coords = offset_coords[::-1]
 
         ori_s, ori_e = geom.coords[0], geom.coords[-1]
         dxdy_s = _cal_dxdy(*geom.coords[:2])

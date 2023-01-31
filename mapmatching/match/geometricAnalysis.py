@@ -1,7 +1,9 @@
+import heapq
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from loguru import logger
+from collections import defaultdict
 from shapely.geometry import box
 
 from ..utils import timeit, Timer
@@ -21,11 +23,9 @@ def plot_candidates(points, edges, match_res):
         
     return 
 
-
 def _filter_candidate(df: gpd.GeoDataFrame,
                       top_k: int = 5,
                       pid: str = 'pid',
-                      edge_keys: list = ['way_id'],
                       level='debug'
                       ):
     """Filter candidates, which belongs to the same way, and pickup the nearest one.
@@ -34,18 +34,17 @@ def _filter_candidate(df: gpd.GeoDataFrame,
         df (gpd.GeoDataFrame): df candidates.
         top_k (int, optional): _description_. Defaults to 5.
         pid (str, optional): _description_. Defaults to 'pid'.
-        edge_keys (list, optional): The keys of edge, which help to filter the edges which belong to the same road. Defaults to ['way_id'].
 
     Returns:
         gpd.GeoDataFrame: The filtered candidates.
     """
     origin_size = df.shape[0]
 
-    df = df.sort_values([pid, 'dist_p2c'], ascending=[True, True])
-    if edge_keys:
-        df = df.groupby([pid] + edge_keys).head(1)
+    df = df.sort_values(['pid', 'dist_p2c'])\
+           .groupby(pid)\
+           .head(top_k)\
+           .reset_index(drop=True)
 
-    df = df.groupby(pid).head(top_k).reset_index(drop=True)
     getattr(logger, level)(
         f"Top k candidate link, size: {origin_size} -> {df.shape[0]}")
 
@@ -55,7 +54,6 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
                         edges: gpd.GeoDataFrame,
                         top_k: int = 5,
                         radius: float = 50,
-                        edge_keys: list = ['way_id'],
                         edge_attrs: list = ['projection', 'src', 'dst', 'way_id', 'dir', 'geometry'],
                         pid: str = 'pid',
                         eid: str = 'eid',
@@ -63,7 +61,8 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
                         ll: bool = True,
                         ll_to_utm_dis_factor=1e-5,
                         crs_wgs: int = 4326,
-                        crs_prj: int = 900913):
+                        crs_prj: int = 900913,
+                        timeit=False):
     """Get candidates points and its localed edge for traj, which are line segment projection of p_i to these road segs.
     This step can be efficiently perfermed with the build-in grid-based spatial index.
 
@@ -72,7 +71,6 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
         edges (gpd.GeoDataFrame): _description_
         top_k (int, optional): _description_. Defaults to 5.
         radius (float, optional): _description_. Defaults to 50.
-        edge_keys (list, optional): _description_. Defaults to ['way_id'].
         edge_attrs (list, optional): _description_. Defaults to ['src', 'dst', 'way_id', 'geometry'].
         pid (str, optional): _description_. Defaults to 'pid'.
         eid (str, optional): _description_. Defaults to 'eid'.
@@ -94,7 +92,7 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
         points = gpd.GeoDataFrame({'geometry': [a, b]}, index=[1, 3])
         
         # candidates
-        res = get_candidates(points, edges, radius=2, top_k=2, ll=False, edge_keys=['way_id'])
+        res = get_candidates(points, edges, radius=2, top_k=2, ll=False)
         _plot_candidates(points, edges, res)
     
     Returns:
@@ -103,9 +101,11 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     if ll:
         radius *= ll_to_utm_dis_factor
     
-    # time_lst = {}
-    # timer = Timer()
-    # timer.start()
+    if timeit:
+        time_lst = {}
+        timer = Timer()
+        timer.start()
+        # FIXME speedup: {'pre query': 0.03, 'query': 2.01, 'post query': 7.86, 'cal dist': 7.9, 'filter': 2.53}
 
     # check edge_attrs
     _edge_attrs = edge_attrs[:]
@@ -113,49 +113,53 @@ def get_k_neigbor_edges(points: gpd.GeoDataFrame,
     if len(edge_attrs) != len(_edge_attrs):
         logger.warning(f"Check edge attrs, only exists: {edge_attrs}")
     
-    # time_lst['pre query'] = timer.stop()
-    # timer.start()
+    if timeit:
+        time_lst['pre query'] = timer.stop()
+        timer.start()
+    
     # query
     boxes = points.geometry.apply(lambda i: box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
     cands = edges.sindex.query_bulk(boxes, predicate=predicate)
-    cands_point_idxs, cands_edge_idxs = points.index[cands[0]], edges.iloc[cands[1]].index
-    if len(cands_point_idxs) == 0:
+    if len(cands[0]) == 0:
         return None
     
-    # time_lst['query'] = timer.stop()
-    # timer.start()
-    _df_points = points.loc[cands_point_idxs, ['geometry']]\
-                       .reset_index().rename(columns={'index':'pid', 'geometry': 'point_geom'})
-    _df_edges  = edges.loc[cands_edge_idxs, edge_attrs]\
-                       .reset_index().rename(columns={'index':'eid', 'geometry': 'edge_geom'})
-    df_cand = pd.concat([_df_points, _df_edges], axis=1)
+    if timeit:
+        time_lst['query'] = timer.stop()
+        timer.start()
+    df_cand = edges.iloc[cands[1]][edge_attrs]\
+                   .reset_index().rename(columns={'index':'eid', 'geometry': 'edge_geom'})
+    df_cand.loc[:, 'pid'] = cands[0]
+    df_cand.loc[:, 'point_geom'] = points.iloc[cands[0]].geometry.values
 
     # check diff
-    cands_pid = set(df_cand.pid.unique())
+    cands_pid = set(cands[0])
     all_pid = set(points.index.values)
     diff_pid = all_pid.difference(cands_pid)
     if diff_pid:
         logger.warning(f"Points {list(diff_pid)} has not candidates")
 
-    # time_lst['post query'] = timer.stop()
-    # timer.start()
+    if timeit:
+        time_lst['post query'] = timer.stop()
+        timer.start()
     if ll:
         df_cand.loc[:, 'dist_p2c'] = geom_series_distance(df_cand.point_geom, df_cand.edge_geom, crs_wgs, crs_prj)
     else:
         df_cand.loc[:, 'dist_p2c'] = gpd.GeoSeries(df_cand.point_geom).distance(gpd.GeoSeries(df_cand.edge_geom))
 
-    # time_lst['cal dist'] = timer.stop()
-    # timer.start()
-    _df_cands = _filter_candidate(df_cand, top_k, pid, edge_keys)
-    
-    # time_lst['filter'] = timer.stop()
-    # print(time_lst)
+    if timeit:
+        time_lst['cal dist'] = timer.stop()
+        timer.start()
+    _df_cands = _filter_candidate(df_cand, top_k, pid)
+
+    if timeit:
+        time_lst['filter'] = timer.stop()
+        time_lst = {k: round(v * 1000, 2) for k, v in time_lst.items() }
+        print(time_lst)
     if _df_cands is None:
         logger.warning(f"Trajectory has no matching candidates")
         return None
     
     return _df_cands
-
 
 def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
     """The obervation prob is defined as the likelihood that a GPS sampling point `p_i` mathes a candidate point `C_ij`
@@ -181,7 +185,6 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
     return np.sqrt(_dist)
 
-
 def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
     def func(x): 
         return project_point_to_polyline(
@@ -192,12 +195,10 @@ def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 's
 
     return res
 
-
 def analyse_geometric_info(points: gpd.GeoDataFrame,
                            edges: gpd.GeoDataFrame,
                            top_k: int = 5,
                            radius: float = 50,
-                           edge_keys: list = [],
                            edge_attrs: list = ['src', 'dst', 'way_id', 'dir', 'dist', 'geometry'],
                            pid: str = 'pid',
                            eid: str = 'eid',
@@ -209,7 +210,7 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            crs_prj: int = 900913,
                            ):
     # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
-    cands = get_k_neigbor_edges(points, edges, top_k, radius, edge_keys,
+    cands = get_k_neigbor_edges(points, edges, top_k, radius,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
     
@@ -235,6 +236,6 @@ if __name__ == "__main__":
     points = gpd.GeoDataFrame({'geometry': [a, b]}, index=[1, 3])
     
     # candidates
-    cands = get_k_neigbor_edges(points, edges, radius=2, top_k=2, ll=False, edge_keys=['way_id'])
+    cands = get_k_neigbor_edges(points, edges, radius=2, top_k=2, ll=False)
     plot_candidates(points, edges, cands)
     
