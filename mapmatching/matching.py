@@ -1,5 +1,5 @@
 import os
-# os.environ["USE_PYGEOS"] = "0"
+os.environ["USE_PYGEOS"] = "0"
 
 import numpy as np
 from copy import deepcopy
@@ -7,6 +7,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import LineString
 
+from .update_network import check_steps
 from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
 from .geo.ops import check_duplicate_points
@@ -23,7 +24,7 @@ from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
 from .match.projection import project_traj_points_to_network
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
-from .match.visualization import matching_debug_level, plot_matching_result
+from .match.visualization import debug_gt_level, plot_matching_result, debug_gt_level_parallel
 
 from .utils.timer import timeit
 from .utils.logger_helper import make_logger
@@ -63,7 +64,8 @@ class ST_Matching():
 
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=False, tolerance=5, plot=False, save_fn=None,
-                 debug_in_levels=False, details=False, metric=None, check_duplicate=False):
+                 debug_in_levels=False, details=False, metric=None, 
+                 check_duplicate=False, check_topo=False):
         res = {'status': STATUS.UNKNOWN}
         
         # simplify trajectory
@@ -93,7 +95,7 @@ class ST_Matching():
             del res['probs']['status']
         res.update(match_res)
 
-        if details:
+        if details or check_topo:
             attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'dst', 'src','first_step', 'geometry', 'last_step', 'path', 'epath', 'vpath','dist']
 
             # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
@@ -124,6 +126,9 @@ class ST_Matching():
         if metric is not None:
             res['metric'] = self.eval(traj, res, metric=metric)
             print(f"{metric}: {res['metric']}")
+
+        if check_topo:
+            check_steps(self, res, prob_thred=.75, factor=1.2)
 
         return res
 
@@ -195,25 +200,27 @@ class ST_Matching():
     def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
         return simplify_trajetory_points(points, tolerance, inplace=True, logger=self.logger)
 
-    def matching_debug(self, traj, graph, debug_folder='./debug'):
-        """matching debug
+    def matching_debug(self, traj:gpd.GeoDataFrame, graph:gpd.GeoDataFrame, level:int=None, debug_folder:str='./debug'):
+        """_summary_
 
         Args:
-            traj ([type]): Trajectory
-            tList ([type]): [description]
-            graph_t ([type]): [description]
-            net ([Digraph_OSM]): [description]
-            debug (bool, optional): [description]. Defaults to True.
+            traj (gpd.GeoDataFrame): _description_
+            graph (gpd.GeoDataFrame): _description_
+            level (int, optional): _description_. Defaults to None, namely output all layers.
+            debug_folder (str, optional): _description_. Defaults to './debug'.
         """
         graph = gpd.GeoDataFrame(graph)
-        # graph.geometry = graph.whole_path
-
-        layer_ids = graph.index.get_level_values(0).unique().sort_values().values
-        for layer in layer_ids:
-            df_layer = graph.loc[layer]
-            matching_debug_level(self.net, traj, df_layer, layer, debug_folder)
         
-        return
+        if level is None:
+            layer_ids = graph.index.get_level_values(0).unique().sort_values().values
+        else:
+            layer_ids = level if isinstance(level, list) else [level]
+
+        for idx in layer_ids:
+            img = debug_gt_level_parallel(self.net, traj, graph, idx)
+            img.save(os.path.join(debug_folder, f"level_{idx}.jpg"))
+        
+        return img
 
     def plot_result(self, traj, info):
         info = deepcopy(info)

@@ -1,10 +1,14 @@
 
+import io
 import os
 import time
 import pandas as pd
+import numpy as np
+from PIL import Image
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import box
+from ..utils.parallel_helper import parallel_process
 
 try:
     from tilemap import plot_geodata, add_basemap
@@ -14,7 +18,7 @@ except:
         return data.plot(*args, **kwargs)
     TILEMAP_FLAG = False
 
-def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=None, legend=True, scale=.9, factor=4):
+def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=None, legend=True, factor=4):
     """Plot the matching situation of one pair of od.
 
     Args:
@@ -30,7 +34,7 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
         matching_debug_subplot(graph_t.loc[1])
     """
     if ax is None:
-        _, ax = plot_geodata(traj, scale=scale, alpha=.6, color='white')
+        _, ax = plot_geodata(traj, alpha=.6, color='white', reset_extent=False)
     else:
         traj.plot(ax=ax, alpha=.6, color='white')
         ax.axis('off')
@@ -39,20 +43,25 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
         # plot_geodata(traj, scale=scale, alpha=.6, color='white', ax=ax)
 
     # OD
-    traj.loc[[level]].plot(ax=ax, marker="*", label=f'O ({src})', zorder=9)
-    traj.loc[[item.pid_1]].plot(ax=ax, marker="s", label=f'D ({dst})', zorder=9)
+    point_0 = traj.loc[[level]]
+    point_n = traj.loc[[item.pid_1]]
+    point_0.plot(ax=ax, marker="*", label=f'O ({src})', zorder=8)
+    point_n.plot(ax=ax, marker="s", label=f'D ({dst})', zorder=8)
+    font_style = {'zorder': 8}
+    trans_p_str = f"{item.trans_prob:.2f}"
+    if 'dir_prob' in item:
+        trans_p_str += f"({item.dist_prob:.2f}, {item.dir_prob:.2f})"
+    ax.text(point_0.geometry.x, point_0.geometry.y, trans_p_str, **font_style)
+    ax.text(point_n.geometry.x, point_n.geometry.y, f"{item.observ_prob:.2f}", **font_style)
 
     # path
     gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='Path')
-    net.get_edge([src]).plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
-    net.get_edge([dst]).plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
+    edges.iloc[[0]].plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
+    edges.iloc[[1]].plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
 
     # aux
     prob = item.observ_prob * item.trans_prob
-    if 'dir_prob' in item:
-        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.trans_prob:.2f} ({item.dist_prob:.2f}, {item.dir_prob:.2f})"
-    else:
-        info = f"{prob:.3f} = {item.observ_prob:.2f} * {item.trans_prob:.2f}"
+    info = f"{prob:.4f}"
 
     if maximun is not None and prob == maximun:
         color = 'red'
@@ -68,8 +77,80 @@ def matching_debug_subplot(net, traj, item, level, src, dst, ax=None, maximun=No
     
     return ax
     
+def ops_matching_debug_subplot(traj, edges, item, layer_id, src, dst, maximun):
+    ax = matching_debug_subplot(traj, edges, item, layer_id, src, dst, maximun=maximun)
+    with io.BytesIO() as buffer:
+        plt.savefig(buffer, bbox_inches='tight', pad_inches=0.1, dpi=300)
+        image = Image.open(buffer)
+        # image = image.convert("RGB")
+        array = np.asarray(image)
+    
+    plt.close()
 
-def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
+    return array
+
+def merge_imgs_np(arrays, n_row, n_col):
+    """
+    Merge a set of tiles into a single array.
+
+    Parameters
+    ---------
+    tiles : list of mercantile.Tile objects
+        The tiles to merge.
+    arrays : list of numpy arrays
+        The corresponding arrays (image pixels) of the tiles. This list
+        has the same length and order as the `tiles` argument.
+
+    Returns
+    -------
+    img : np.ndarray
+        Merged arrays.
+    extent : tuple
+        Bounding box [west, south, east, north] of the returned image
+        in long/lat.
+    """
+    # get indices starting at zero
+    indices = []
+    for r in range(n_row):
+        for c in range(n_col):
+            indices.append((r, c))
+
+    # the shape of individual tile images
+    h, w, d = arrays[0].shape
+    h = max([i.shape[0] for i in arrays])
+    w = max([i.shape[1] for i in arrays])
+
+    # empty merged tiles array to be filled in
+    img = np.ones((h * n_row, w * n_col, d), dtype=np.uint8) * 255
+
+    for ind, arr in zip(indices, arrays):
+        y, x = ind
+        _h, _w, _ = arr.shape
+        ori_x = x * w + (w - _w) // 2
+        ori_y = y * h + (h - _h) // 2
+        img[ori_y : ori_y + _h, ori_x : ori_x + _w, :] = arr
+
+    return img
+
+def debug_gt_level_parallel(net, traj, graph, layer_id, n_jobs=16):
+    df_layer = graph.loc[layer_id]
+    if df_layer.empty:
+        return None
+    n_rows = df_layer.index.get_level_values(0).nunique()
+    n_cols = df_layer.index.get_level_values(1).nunique()
+    _max = (df_layer.observ_prob * df_layer.trans_prob).max()
+
+    params = ((traj, net.get_edge([src, dst]), df_layer.loc[src].loc[dst], layer_id, src, dst, _max) 
+                for src, dst in df_layer.index.values)
+    img_arrs = parallel_process(ops_matching_debug_subplot, params, n_jobs=n_jobs, pbar_switch=True)
+    img_np = merge_imgs_np(img_arrs, n_rows, n_cols)
+
+    img = Image.fromarray(img_np).convert("RGB")
+
+    return img
+
+# deprecated
+def debug_gt_level(net, traj, df_layer, layer_id, n_jobs=16, debug_folder='./'):
     """PLot the matchings between levels (i, i+1)
 
     Args:
@@ -110,7 +191,6 @@ def matching_debug_level(net, traj, df_layer, layer_id, debug_folder='./'):
         plt.close()
         
     return True
-
 
 def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=None, categorical=True):
     def _base_plot(df):
@@ -160,7 +240,6 @@ def plot_matching(net, traj, cands, route, save_fn=None, satellite=True, column=
     
     return ax
 
-
 def _base_plot(df, column=None, categorical=True):
     if column is not None and column in df.columns:
         ax = df.plot(alpha=.3, column=column, categorical=categorical, legend=True)
@@ -169,7 +248,6 @@ def _base_plot(df, column=None, categorical=True):
     ax.axis('off')
     
     return ax
-
 
 def plot_matching_result(traj_points, path, net, column=None, categorical=True):
     _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))

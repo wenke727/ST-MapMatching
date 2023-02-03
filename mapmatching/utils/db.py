@@ -1,8 +1,8 @@
 import geopandas as gpd
 from sqlalchemy import create_engine
-from ..setting import connect
+from ..setting import postgre_url
 
-ENGINE   = create_engine(connect)
+ENGINE = create_engine(postgre_url)
 
 def gdf_to_postgis(gdf, name, engine=ENGINE, if_exists='replace', *args, **kwargs):
     """Save the GeoDataFrame to the db

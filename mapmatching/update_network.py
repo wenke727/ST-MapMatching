@@ -1,6 +1,4 @@
 import geopandas as gpd
-from .matching import ST_Matching
-
 
 def plot_topo_helper(seg, pos, neg, matcher):
     fig, ax = matcher.plot_result(seg, pos)
@@ -10,7 +8,7 @@ def plot_topo_helper(seg, pos, neg, matcher):
 
     return
 
-def check_each_step(matcher:ST_Matching, traj:gpd.GeoDataFrame, idx:int, factor=1.2, verbose=True):
+def check_each_step(matcher, traj:gpd.GeoDataFrame, idx:int, factor=1.2, verbose=True):
     seg = traj.iloc[idx: idx + 2]
     net = matcher.net
 

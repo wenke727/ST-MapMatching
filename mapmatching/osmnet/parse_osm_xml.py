@@ -368,7 +368,7 @@ def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twowa
 
     # df_edges = _transform_coords_seq_2_linstring(df_edges, df_nodes)
     df_edges.loc[:, 'geometry'] = _parrallel_collect_geoms(df_edges[['waypoints']], df_nodes, n_jobs)
-    df_edges = gpd.GeoDataFrame(df_edges)
+    df_edges = gpd.GeoDataFrame(df_edges, crs=crs)
 
     if offset:
         df_edges = edge_offset(df_edges).sort_index()

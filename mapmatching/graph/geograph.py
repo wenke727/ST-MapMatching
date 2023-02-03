@@ -130,16 +130,16 @@ class GeoDigraph(Digraph):
            
     """ io """
     def to_postgis(self, name, nodes_attrs=['nid', 'x', 'y', 'traffic_signals', 'geometry']):
-        from ..utils.db import gdf_to_postgis
+        from ..geo.io import to_postgis
         df_node_with_degree = self.df_nodes.merge(self.calculate_degree(), left_index=True, right_index=True).reset_index()
         
-        gdf_to_postgis(self.df_edges, f'topo_osm_{name}_edge')
-        gdf_to_postgis(df_node_with_degree, f'topo_osm_{name}_endpoint')
+        to_postgis(self.df_edges, f'topo_osm_{name}_edge', if_exists='replace')
+        to_postgis(df_node_with_degree, f'topo_osm_{name}_endpoint', if_exists='replace')
         
         self.df_nodes.loc[:, 'nid'] = self.df_nodes.index
         nodes_attrs = [i for i in nodes_attrs if i in list(self.df_nodes) ]
         self.df_nodes = self.df_nodes[nodes_attrs]
-        gdf_to_postgis(self.df_nodes, f'topo_osm_{name}_node')
+        to_postgis(self.df_nodes, f'topo_osm_{name}_node', if_exists='replace')
 
         return True
 

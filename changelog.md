@@ -9,6 +9,26 @@
 - [ ] ALT 算法，加速最短路搜索速度
 - [x] 中断处理，match/viterbi.py
 
+## [V1.3.5] - 2023-2-3
+
+### Added
+
+- ST_Matching
+
+  matching 函数 增加`check_topo` 参数用于控制检测 topo 信息是否有误
+
+- geo.io
+
+  `sqlalchemy 2.0.0` 版本和 Postgresql 的交互
+
+- match.visualization
+
+  debug_gt_level_parallel, 支持并行化绘制子图
+
+  merge_imgs_np, 以 grid 的将子图合并成大图
+
+### Changed
+
 ## [V1.3.4] - 2023-1-31
 
 ### Changed

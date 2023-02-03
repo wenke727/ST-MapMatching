@@ -1,8 +1,8 @@
 """ Global config """
 from pathlib import Path
 
-IP = "192.168.202.26"
-connect= f"postgresql://postgres:pcl_A5A@{IP}:5432/gis"
+IP = "192.168.135.16"
+postgre_url= f"postgresql://postgres:pcl_A5A@{IP}:5432/gis"
 
 root = Path(__file__).parent
 DEBUG_FOLDER = root / "../debug"
