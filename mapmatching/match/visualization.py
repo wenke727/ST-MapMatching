@@ -47,7 +47,7 @@ def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=
     point_n = traj.loc[[item.pid_1]]
     point_0.plot(ax=ax, marker="*", label=f'O ({src})', zorder=8)
     point_n.plot(ax=ax, marker="s", label=f'D ({dst})', zorder=8)
-    font_style = {'zorder': 8}
+    font_style = {'zorder': 8, "ha": "center", "va":"bottom", "zorder":9}
     trans_p_str = f"{item.trans_prob:.2f}"
     if 'dir_prob' in item:
         trans_p_str += f"({item.dist_prob:.2f}, {item.dir_prob:.2f})"

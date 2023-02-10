@@ -185,7 +185,7 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
     return np.sqrt(_dist)
 
-def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
+def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1', 'factors']):
     def func(x): 
         return project_point_to_polyline(
             x.points, x.edges, coord_sys=True)

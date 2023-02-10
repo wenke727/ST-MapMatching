@@ -200,6 +200,8 @@ class GeoDigraph(Digraph):
             self.df_edges.loc[idxs, 'geom_origin'] = self.df_edges.loc[idxs].geometry.copy()
             self.df_edges.loc[idxs, 'geometry'] = self.df_edges.loc[idxs].apply( lambda x: parallel_offset_edge(x), axis=1 )
 
+        self.search_memo.clear()
+
         return True
 
     def add_edges_from(self, edges):

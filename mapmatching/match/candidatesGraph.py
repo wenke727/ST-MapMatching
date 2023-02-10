@@ -4,7 +4,7 @@ from haversine import haversine_vector, Unit
 
 from ..utils import timeit
 from .status import CANDS_EDGE_TYPE
-from ..geo.azimuth import azimuthAngle_vector
+from ..geo.azimuth import cal_coords_seq_azimuth
 
 
 def _cal_traj_params(points, move_dir=True, check=False):
@@ -25,8 +25,7 @@ def _cal_traj_params(points, move_dir=True, check=False):
              'd_euc': dist}
 
     if move_dir:
-        dirs = azimuthAngle_vector(coords[:-1, 1], coords[:-1, 0], 
-                                   coords[1: , 1], coords[1:, 0])
+        dirs = cal_coords_seq_azimuth(coords)
         _dict['move_dir'] = dirs
     
     res = pd.DataFrame(_dict)

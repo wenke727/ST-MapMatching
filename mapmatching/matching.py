@@ -63,7 +63,7 @@ class ST_Matching():
         self.route_planning_max_search_dist = max_search_dist
 
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
-                 simplify=False, tolerance=5, plot=False, save_fn=None,
+                 simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False, metric=None, 
                  check_duplicate=False, check_topo=False):
         res = {'status': STATUS.UNKNOWN}
@@ -128,7 +128,11 @@ class ST_Matching():
             print(f"{metric}: {res['metric']}")
 
         if check_topo:
-            check_steps(self, res, prob_thred=.75, factor=1.2)
+            flag = check_steps(self, res, prob_thred=.75, factor=1.2)
+            if flag:
+                res = self.matching(traj, top_k, dir_trans, beam_search,
+                 False, tolerance, plot, save_fn, debug_in_levels, details, metric, 
+                 check_duplicate, False)
 
         return res
 

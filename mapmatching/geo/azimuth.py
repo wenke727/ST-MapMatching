@@ -201,7 +201,12 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     
     return val
 
+
+def cal_coords_seq_azimuth(coords):
+    return azimuthAngle_vector(coords[:-1, 1], coords[:-1, 0], 
+                               coords[1: , 1], coords[1:, 0])
     
+
 if __name__ == '__main__':
     p0 = wkt.loads('POINT (113.934151 22.577512)')
     p1 = wkt.loads('POINT (113.934144 22.577979)')

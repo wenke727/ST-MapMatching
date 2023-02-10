@@ -120,7 +120,6 @@ def to_postgis(gdf:gpd.GeoDataFrame, name, duplicates_idx=None, engine=ENGINE, i
             gdf = tmp[remain_cols]
         
         status = gdf.to_postgis(name=name, con=conn, if_exists=if_exists, *args, **kwargs)
-        conn.commit()
     
     return status 
 

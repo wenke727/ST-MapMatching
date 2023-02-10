@@ -6,15 +6,14 @@ from .geometricAnalysis import project_point_to_line_segment
 from ..graph import GeoDigraph
 
 
-def project_traj_points_to_network(traj_panos:gpd.GeoDataFrame, path:gpd.GeoDataFrame, net:GeoDigraph, keep_attrs=[['pid', 'geometry']]):
+def project_traj_points_to_network(traj_panos:gpd.GeoDataFrame, path:gpd.GeoDataFrame, net:GeoDigraph, keep_attrs=[['geometry']]):
     panos = traj_panos.copy()
-    panos.loc[:, 'eid'] = panos.apply(lambda x: path.loc[path.distance(x.geometry).idxmin()].eid, axis=1)
+    panos.loc[:, 'eid'] = panos.apply(
+        lambda x: path.loc[path.distance(x.geometry).idxmin()].eid, axis=1)
 
-    projectd_edges = net.df_edges.loc[panos['eid'].values]
-    edge_geoms = projectd_edges.geometry.values
-
+    edge_geoms = net.get_edge(panos['eid'].values, attrs='geometry').values
     df_project = project_point_to_line_segment(
-        panos.geometry.values, edge_geoms, keep_cols=['projection', 'len_0', 'distance'])
+        panos.geometry.values, edge_geoms, keep_cols=['projection', 'len_0', 'distance', 'factors'])
     df_project.rename(columns={'projection': "projected_point", 'len_0': 'offset', 'distance': 'projected_dist'}, inplace=True)
     df_project.loc[:, 'projected_point'] = df_project.projected_point.apply(lambda x: Point(*x))
 

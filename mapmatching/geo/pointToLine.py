@@ -30,7 +30,6 @@ def get_foot_point(point, line_p1, line_p2):
 
     return (round(xn, 6), round(yn, 6))
 
-
 def relation_bet_point_and_line( point, line ):
     """Judge the realtion between point and the line, there are three situation:
     1) the foot point is on the line, the value is in [0,1]; 
@@ -59,7 +58,6 @@ def relation_bet_point_and_line( point, line ):
 
     return flag
 
-
 def cal_foot_point_on_polyline( point: Point, line: LineString, foot=True, ratio_thres=.0):
     """caculate the foot point is on the line or not
 
@@ -81,7 +79,6 @@ def cal_foot_point_on_polyline( point: Point, line: LineString, foot=True, ratio
     
     return flag
 
-
 def get_vertical_dist(pointX, pointA, pointB):
     a, b, c = haversine_vector(
         np.array([pointA, pointA, pointB])[:, ::-1],
@@ -99,7 +96,6 @@ def get_vertical_dist(pointX, pointA, pointB):
     vertical_dist = S * 2 / a
 
     return vertical_dist
-
 
 def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coord_sys=False):
     """Find the shortest distance and foot point from a point to a line segment, and split the segment into two part and update some attributes.
@@ -191,6 +187,13 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
             'name': ['seg_0', 'seg_1']
         }).plot(legend=True, column='name', ax=ax)
 
+    if factors[split_idx] <= 0:
+        projection = coords[0]
+    elif factors[split_idx] < 1:
+        projection = foots[split_idx]
+    else:
+        projection = coords[-1]
+
     res = {
         'factors': factors,
         'foots': foots,
@@ -206,7 +209,6 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
     }
 
     return res
-
 
 def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4326, out_crs:int=900913, plot:bool=False):
     """Find the shortest distance and foot point from a point to a line segment, and split the segment into two part and update some attributes.
@@ -246,8 +248,7 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     
     return res
 
-
-def project_point_2_line(node:Point, polyline:LineString, plot=False):
+def project_point_2_linestring(node:Point, polyline:LineString, plot=False):
     """Linear referencing
 
     Args:
@@ -324,7 +325,7 @@ if __name__ == "__main__":
     # point_to_polyline_process_wgs(node, polyline, plot=True)
 
     # 63 us
-    seg_0, seg_1, len_0, len_1 = project_point_2_line(node, polyline, True)
+    seg_0, seg_1, len_0, len_1 = project_point_2_linestring(node, polyline, True)
     cal_points_seq_distance(np.array(seg_0.coords))
 
     # 180 us
