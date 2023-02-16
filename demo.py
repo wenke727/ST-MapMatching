@@ -27,3 +27,21 @@ res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, details=True)
 matcher.eval(traj, res, resample=5, eps=10)
 
 # %%
+net.df_edges.crs
+proj_crs = net.df_edges.estimate_utm_crs()
+
+import pyproj
+
+# pyproj.CRS.from_string(proj_crs)
+# %timeit net.df_nodes.to_crs(proj_crs) # 351 ms
+# %timeit net.df_edges.to_crs(proj_crs) # 282 ms
+
+# %timeit traj.to_crs(proj_crs) # 2.59 ms
+proj_crs.to_epsg()
+# %%
+dir(proj_crs)
+# %%
+
+net.epsg
+
+# %%

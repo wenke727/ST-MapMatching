@@ -21,3 +21,5 @@ def check_duplicate_points(points:gpd.GeoDataFrame):
         return points[~mask]
 
     return points
+
+from .point2line import project_points_2_linestring, project_points_2_linestrings

@@ -92,6 +92,7 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     # distance transmission probability
     dist = gt.d_euc / gt.w
 
+    # FIXME use euc distance insted of haversine dist
     # Penalize slightly shorter paths
     mask = dist > 1.01
     dist[mask] = 0.95 / dist[mask]

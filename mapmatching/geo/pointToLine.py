@@ -2,7 +2,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from haversine import haversine, haversine_vector, Unit
-from .haversineDistance import cal_points_seq_distance
+from .haversineDistance import cal_coords_seq_distance
 
 
 def get_foot_point(point, line_p1, line_p2):
@@ -268,7 +268,7 @@ def project_point_2_linestring(node:Point, polyline:LineString, plot=False):
 
     # FIXME the distance along this geometric object to a point nearest the other object.
     coords = np.array(polyline.coords)
-    len, total_len = cal_points_seq_distance(coords)
+    len, total_len = cal_coords_seq_distance(coords)
     normalized_dist = dist / polyline.length
 
     len_0 = total_len * normalized_dist
@@ -326,7 +326,7 @@ if __name__ == "__main__":
 
     # 63 us
     seg_0, seg_1, len_0, len_1 = project_point_2_linestring(node, polyline, True)
-    cal_points_seq_distance(np.array(seg_0.coords))
+    cal_coords_seq_distance(np.array(seg_0.coords))
 
     # 180 us
     project_point_to_polyline(node, polyline, plot=False)

@@ -48,7 +48,6 @@ def read_postgis(name, atts="*", condition=None, engine=ENGINE, bbox=None, mask=
             sql += f" WHERE {condition}" if wkt is None else f" {condition}"
         
         gdf = gpd.read_postgis(sqlalchemy.text(sql), con=conn, geom_col=geom_col, *args, **kwargs)
-        conn.commit()
     
     return gdf
 

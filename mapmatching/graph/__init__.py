@@ -1,1 +1,1 @@
-from .geograph import GeoDigraph
+from .geograph import GeoDigraph, GeoDigraphLL

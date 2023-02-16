@@ -8,6 +8,48 @@
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 - [x] 中断处理，match/viterbi.py
+- [ ] 球面坐标 -> 投影坐标，一系列的变更工作
+
+## [V1.3.7] - 2023-2-15
+
+### Added
+
+- geo.ops.point2line: 基于 shapely 的 linear referencing 的功能重构
+  - project_points_2_linestring: 将点集投影到折线上
+  - project_points_2_linestrings: 将点集投影到最近的折线上
+  - cut_linestring: 根据 offset 切分折线
+- geo.vis
+  - plot_points_with_dir
+- geo.haversineDistance
+  - haversine_geoseries
+- geo.query
+  - get_K_neigh_geoms: 基于 geopandas 的query_bulk 的基础上，加上一些分析
+
+- graph.geograph
+  - GeoLLDiGraph: 支持球面坐标和投影坐标的转换
+
+### Changed
+
+-  geo.metric.lcss 通过 numba 加速 dp 矩阵的遍历
+- ST_Matching
+  - project：调用重构的`project_points_2_linestrings`
+
+## [V1.3.6] - 2023-2-13
+
+### Added
+
+- `cal_coords_seq_azimuth`
+- `plot_linestring_with_arrows`
+
+### Changed
+
+- ST_Matching
+
+  matching 函数 , 在`check_topo` 参数为正的时候，将检查拓扑，若发生纠正拓扑，则返回纠正后的匹配结果
+
+- check_steps
+
+  增加 status 为 4 时候的边界，后续需要重构代码
 
 ## [V1.3.5] - 2023-2-3
 

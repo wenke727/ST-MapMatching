@@ -3,7 +3,22 @@
 import numpy as np
 from haversine import haversine_vector, Unit
 from ..haversineDistance import haversine_matrix
+import numba
 
+@numba.njit
+def lcss_dp(n0, n1, M):
+    # An (m+1) times (n+1) matrix
+    C = [[0] * (n1 + 1) for _ in range(n0 + 1)]
+    for i in range(1, n0 + 1):
+        for j in range(1, n1 + 1):
+            if M[i - 1, j - 1]:
+                C[i][j] = C[i - 1][j - 1] + 1
+            else:
+                C[i][j] = max(C[i][j - 1], C[i - 1][j])
+
+    val = float(C[n0][n1]) / min([n0, n1])
+
+    return val
 
 def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
     """
@@ -23,25 +38,14 @@ def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
     n0 = len(array1)
     n1 = len(array2)
     
-    dist_matrix = haversine_matrix(array1, array2, xy=True)
-    M = dist_matrix.copy()
+    M = haversine_matrix(array1, array2, xy=True)
     mask = M < eps
     M[mask] = True
     M[~mask] = False
-    
-    # An (m+1) times (n+1) matrix
-    C = [[0] * (n1 + 1) for _ in range(n0 + 1)]
-    for i in range(1, n0 + 1):
-        for j in range(1, n1 + 1):
-            if M[i - 1, j - 1]:
-                C[i][j] = C[i - 1][j - 1] + 1
-            else:
-                C[i][j] = max(C[i][j - 1], C[i - 1][j])
 
-    val = float(C[n0][n1]) / min([n0, n1])
+    val = lcss_dp(n0, n1, M)
 
     return val
-
 
 def edr(array1, array2, eps):
     """
@@ -78,7 +82,6 @@ def edr(array1, array2, eps):
     
     return edr
 
-
 def erp(array1, array2, g):
     """
     Usage
@@ -114,7 +117,6 @@ def erp(array1, array2, g):
     erp = C[n0, n1]
     
     return erp
-
 
 """ Euclidean Geometry """
 def e_lcss(t0, t1, eps):

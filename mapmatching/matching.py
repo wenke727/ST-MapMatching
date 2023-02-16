@@ -1,18 +1,20 @@
 import os
-os.environ["USE_PYGEOS"] = "0"
+# os.environ["USE_PYGEOS"] = "0"
 
 import numpy as np
 from copy import deepcopy
+import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import LineString
 
+from .graph import GeoDigraph, GeoDigraphLL
 from .update_network import check_steps
-from .graph import GeoDigraph
 from .geo.metric import lcss, edr, erp
 from .geo.ops import check_duplicate_points
+from .geo.ops.point2line import project_points_2_linestrings
 from .geo.douglasPeucker import simplify_trajetory_points
-from .geo.metric.trajResample import resample_polyline_seq_to_point_seq, resample_point_seq
+from .geo.ops.resample import resample_polyline_seq_to_point_seq, resample_point_seq
 
 from .osmnet.build_graph import build_geograph
 
@@ -22,7 +24,6 @@ from .match.postprocess import get_path
 from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
-from .match.projection import project_traj_points_to_network
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
 from .match.visualization import debug_gt_level, plot_matching_result, debug_gt_level_parallel
 
@@ -36,20 +37,20 @@ SET_PANDAS_LOG_FORMET()
 
 class ST_Matching():
     def __init__(self,
-                 net: GeoDigraph,
+                 net: GeoDigraphLL,
                  max_search_steps=2000,
                  max_search_dist=10000,
                  top_k_candidates=5,
                  cand_search_radius=50,
                  crs_wgs=4326,
-                 crs_prj=900913,
+                 crs_prj=None,
                  prob_thres=.8, 
                  log_folder='./log',
                  console=True,
                  ):
         self.net = net
         self.crs_wgs = crs_wgs
-        self.crs_wgs = crs_wgs
+        self.crs_prj = crs_prj
         self.debug_folder = DEBUG_FOLDER
         self.logger = make_logger(log_folder, console=console, level="INFO")
         if not os.path.exists(self.debug_folder):
@@ -96,7 +97,8 @@ class ST_Matching():
         res.update(match_res)
 
         if details or check_topo:
-            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'dst', 'src','first_step', 'geometry', 'last_step', 'path', 'epath', 'vpath','dist']
+            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 
+                     'flag', 'status', 'dst', 'src','first_step', 'geometry', 'last_step', 'path', 'epath', 'vpath','dist']
 
             # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
             attrs = [i for i in attrs if i in list(graph)]
@@ -109,6 +111,10 @@ class ST_Matching():
                 'path': self.transform_res_2_path(res), 
             }
             res['details'] = _dict
+
+        if metric is not None:
+            res['metric'] = self.eval(traj, res, metric=metric)
+            print(f"{metric}: {res['metric']}")
 
         if plot or save_fn:
             fig, ax = self.plot_result(traj, res)
@@ -123,11 +129,8 @@ class ST_Matching():
         if debug_in_levels:
             self.matching_debug(traj, graph)
         
-        if metric is not None:
-            res['metric'] = self.eval(traj, res, metric=metric)
-            print(f"{metric}: {res['metric']}")
-
         if check_topo:
+            # FIXME 重复操作，直接返回结果即可
             flag = check_steps(self, res, prob_thred=.75, factor=1.2)
             if flag:
                 res = self.matching(traj, top_k, dir_trans, beam_search,
@@ -145,7 +148,10 @@ class ST_Matching():
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
-            coord = cands.iloc[0].projection
+            if "projection" in list(cands):
+                coord = cands.iloc[0].projection
+            else:
+                coord = cands.iloc[0]['proj_point'].coords[0]
             res = {'epath': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
             info.update(res)
             info['status'] = STATUS.ONE_POINT
@@ -163,12 +169,14 @@ class ST_Matching():
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
             prob, rList = process_viterbi_pipeline(cands, graph[['pid_1', 'dist_prob']])
 
-
         metric['prob'] = prob
 
         return rList, graph
 
     def eval(self, traj, res=None, path=None, resample=5, eps=10, metric='lcss', g=None):
+        """
+        lcss 的 dp 数组 循环部分，使用numba 加速，这个环节可以降低 10% 的时间消耗（20 ms） 
+        """
         assert res is not None or path is not None
         assert metric in ['lcss', 'edr', 'erp']
         
@@ -191,8 +199,16 @@ class ST_Matching():
 
         return _eval[0](*_eval[1])
 
-    def project(self, traj_panos, path, keep_attrs=None):
-        return project_traj_points_to_network(traj_panos, path, self.net, keep_attrs)
+    def project(self, points, path, keep_attrs=['eid', 'geometry'], normalized=True, reset_geom=True):
+        ps = project_points_2_linestrings(points, path, normalized=normalized, keep_attrs=keep_attrs)
+
+        ps = gpd.GeoDataFrame(pd.concat([points, ps], axis=1))
+        if reset_geom:
+            ps.loc[:, 'ori_geom'] = points.geometry.apply(lambda x: x.wkt)
+            ps.set_geometry('proj_point', inplace=True)
+            ps.drop(columns=['geometry'], inplace=True)
+        
+        return ps
 
     def load_points(self, fn, simplify=False, tolerance: int = 10,
                     crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):

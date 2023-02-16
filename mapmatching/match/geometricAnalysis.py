@@ -7,7 +7,9 @@ from collections import defaultdict
 from shapely.geometry import box
 
 from ..utils import timeit, Timer
+from ..geo.query import get_K_neigh_geoms
 from ..geo.misc import geom_series_distance
+from ..geo.ops.point2line import cut_linestring
 from ..geo.pointToLine import project_point_to_polyline
 
 
@@ -185,7 +187,7 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
     return np.sqrt(_dist)
 
-def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1', 'factors']):
+def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
     def func(x): 
         return project_point_to_polyline(
             x.points, x.edges, coord_sys=True)
@@ -213,13 +215,20 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
     cands = get_k_neigbor_edges(points, edges, top_k, radius,
                                 edge_attrs, pid, eid, predicate, ll, 
                                 ll_to_utm_dis_factor, crs_wgs, crs_prj)
-    
+
     if cands is not None:
         cands[point_to_line_attrs] = project_point_to_line_segment(
             cands.point_geom, cands.edge_geom, point_to_line_attrs)
         
         cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
-    
+
+    # _cands, _ = get_K_neigh_geoms(points.geometry, edges[['eid'] + edge_attrs], query_id='pid',  project=True, keep_geom=True)
+    # _cands.loc[:, ['seg_0', 'seg_1', "len_0", 'len_1']] = _cands.apply(
+    #     lambda x: cut_linestring(x['edge_geom'], x['offset']),
+    #     axis=1, result_type='expand'
+    # )
+    # _cands.loc[:, 'observ_prob'] = cal_observ_prob(_cands.dist_p2c)
+
     return cands
     
 

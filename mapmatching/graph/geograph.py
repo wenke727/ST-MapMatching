@@ -259,6 +259,39 @@ class GeoDigraph(Digraph):
         return NotImplementedError
 
 
+class GeoDigraphLL(GeoDigraph):
+    def __init__(self, df_edges: GeoDataFrame = None, df_nodes: GeoDataFrame = None, crs_wgs=4326, crs_prj=None, ll=False, *args, **kwargs):
+        super().__init__(df_edges, df_nodes, *args, **kwargs)
+        if crs_prj is None:
+            crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
+        self.crs_wgs = crs_wgs
+        self.crs_prj = crs_prj
+        
+        if not ll:
+            self.to_proj()
+
+
+    def to_ll(self):
+        self.df_edges.to_crs(self.crs_wgs, inplace=True)
+        self.df_nodes.to_crs(self.crs_wgs, inplace=True)
+        
+        return 
+
+    def to_proj(self):
+        self.df_edges.to_crs(self.crs_prj, inplace=True)
+        self.df_nodes.to_crs(self.crs_prj, inplace=True)
+
+        return
+
+    @property
+    def crs(self):
+        return self.df_edges.crs
+    
+    @property
+    def epsg(self):
+        return self.df_edges.crs.to_epsg()
+    
+    
 if __name__ == "__main__":
     network = GeoDigraph()
     network.load_checkpoint(ckpt='./cache/Shenzhen_graph_9.ckpt')
