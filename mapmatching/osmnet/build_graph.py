@@ -7,26 +7,30 @@ from ..osmnet.parse_osm_xml import parse_xml_to_graph
 from ..setting import DATA_FOLDER
 
 
-def load_geograph(ckpt):
+def load_geograph(ckpt, ll):
     graph = GeoDigraph()
     graph.load_checkpoint(ckpt)
     graph.init_searcher()
 
+    if not ll:
+        graph.to_proj()
+
     return graph
 
 
-def build_geograph(xml_fn=None, bbox=None, ckpt=None, way_info=True, upload_to_db=False, *args, **kwargs):
+def build_geograph(xml_fn=None, bbox=None, ckpt=None, ll=False, way_info=True, upload_to_db=False, *args, **kwargs):
     if ckpt:
-        return load_geograph(ckpt)
+        return load_geograph(ckpt, ll)
 
     if not os.path.exists(xml_fn):
         download_osm_xml(xml_fn, bbox, False)
     
     df_nodes, df_edges, df_ways = parse_xml_to_graph(xml_fn, *args, **kwargs)
     
+    graph = GeoDigraph(df_edges, df_nodes, ll=ll)
+    if not ll:
+        graph.to_proj()
 
-    graph = GeoDigraph(df_edges, df_nodes)
-    
     return graph
 
 if __name__ == "__main__":

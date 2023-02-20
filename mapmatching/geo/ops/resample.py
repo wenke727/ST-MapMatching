@@ -3,11 +3,11 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 
-from ..haversineDistance import cal_points_geom_seq_distacne
+from .distance import cal_points_geom_seq_distacne
 
 
 def resample_point_seq(points, step=2, last=True):
-    # TODO linear referencing
+    # TODO linear referencing + speedup
     if points.shape[0] == 1:
         return gpd.GeoDataFrame(points), np.array([points.iloc[0].coords[0]])
 
@@ -35,7 +35,7 @@ def resample_point_seq(points, step=2, last=True):
     return df_samples, np.array(samples_coords)
 
 def resample_polyline_seq_to_point_seq(polyline, step=2, last=True):
-    coords = np.concatenate(polyline.apply(lambda x: x.coords))
+    coords = np.concatenate(polyline.apply(lambda x: x.coords).values)
 
     mask = np.sum(coords[:-1] == coords[1:], axis=1) == 2
     mask = np.concatenate([mask, [False]])

@@ -2,7 +2,7 @@
 
 import numpy as np
 from haversine import haversine_vector, Unit
-from ..haversineDistance import haversine_matrix
+from ..ops.distance import haversine_matrix
 import numba
 
 @numba.njit
@@ -20,7 +20,15 @@ def lcss_dp(n0, n1, M):
 
     return val
 
-def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
+def cal_dist_matrix(array1:np.ndarray, array2:np.ndarray, ll=True):
+    if ll:
+        M = haversine_matrix(array1, array2, xy=True)
+    else:
+        M = np.linalg.norm((array1[:, np.newaxis, :] - array2[np.newaxis, :, :]), axis=-1)
+
+    return M
+
+def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0, ll=True):
     """
     Usage
     -----
@@ -35,19 +43,16 @@ def lcss(array1:np.ndarray, array2:np.ndarray, eps:float=10.0):
     lcss : float
            The Longuest-Common-Subsequence distance between trajectory t0 and t1
     """
-    n0 = len(array1)
-    n1 = len(array2)
-    
-    M = haversine_matrix(array1, array2, xy=True)
+    M = cal_dist_matrix(array1, array2, ll)
     mask = M < eps
     M[mask] = True
     M[~mask] = False
 
-    val = lcss_dp(n0, n1, M)
+    val = lcss_dp(len(array1), len(array2), M)
 
     return val
 
-def edr(array1, array2, eps):
+def edr(array1, array2, eps, ll=False):
     """
     Usage
     -----
@@ -65,7 +70,7 @@ def edr(array1, array2, eps):
     n0 = len(array1)
     n1 = len(array2)
     
-    dist_matrix = haversine_matrix(array1, array2, xy=True)
+    dist_matrix = cal_dist_matrix(array1, array2, ll)
     M = dist_matrix.copy()
     mask = M < eps
     M[mask] = True
@@ -82,7 +87,7 @@ def edr(array1, array2, eps):
     
     return edr
 
-def erp(array1, array2, g):
+def erp(array1, array2, g, ll=False):
     """
     Usage
     -----
@@ -100,7 +105,7 @@ def erp(array1, array2, g):
     n1 = len(array2)
     C = np.zeros((n0 + 1, n1 + 1))
 
-    M = haversine_matrix(array1, array2, xy=True)
+    dist_matrix = cal_dist_matrix(array1, array2, ll)
 
     ref_1 = haversine_vector(array1[:, ::-1], g[::-1], unit=Unit.METERS)
     ref_2 = haversine_vector(array2[:, ::-1], g[::-1], unit=Unit.METERS)
@@ -119,7 +124,7 @@ def erp(array1, array2, g):
     return erp
 
 """ Euclidean Geometry """
-def e_lcss(t0, t1, eps):
+def e_lcss(t0, t1, eps, ll=False):
     """
     Usage
     -----

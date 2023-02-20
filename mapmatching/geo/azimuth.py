@@ -192,8 +192,12 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
     if not weight:
         val = np.mean(lst)
     else:
-        coords = coords[:, ::-1]
-        weights = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
+        # FIXME: coords
+        try:
+            coords = coords[:, ::-1]
+            weights = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
+        except:
+            weights = np.linalg.norm(coords[:-1] - coords[1:], axis=1)
         if np.sum(weights) == 0:
             val = np.mean(lst)
         else:
@@ -203,8 +207,8 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
 
 
 def cal_coords_seq_azimuth(coords):
-    return azimuthAngle_vector(coords[:-1, 1], coords[:-1, 0], 
-                               coords[1: , 1], coords[1:, 0])
+    return azimuthAngle_vector(coords[:-1, 0], coords[:-1, 1], 
+                               coords[1: , 0], coords[1:, 1])
     
 
 if __name__ == '__main__':

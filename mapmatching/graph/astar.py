@@ -5,12 +5,12 @@ from collections import deque
 from haversine import haversine, Unit
 
 
-def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord'):
+def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, ll=True):
     assert src in nodes and dst in nodes, "Check the input o and d."
     if (src, dst) in memo:
         return memo[(src, dst)]
     
-    if type == 'coord':
+    if ll:
         _src = nodes[src]
         _dst = nodes[dst]
         _len = haversine(
@@ -19,7 +19,7 @@ def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord
             unit=Unit.METERS
         )
     else:
-        raise NotImplementedError
+        _len = nodes[src]['geometry'].distance(nodes[dst]['geometry'])
     
     return _len
 
@@ -27,7 +27,7 @@ def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, type='coord
 class PathPlanning:
     def __init__(self, graph: dict, nodes: dict,
                  search_memo: dict = {}, nodes_dist_memo: dict = {},
-                 max_steps: int = 2000, max_dist: int = 10000, level='debug'):
+                 max_steps: int = 2000, max_dist: int = 10000, level='debug', ll=True):
 
         self.graph = graph
         self.nodes = nodes
@@ -36,6 +36,7 @@ class PathPlanning:
         self.max_steps = max_steps
         self.max_dist = max_dist
         self.level = level
+        self.ll = ll
 
     def has_edge(self, src, dst):
         if src in self.graph and dst in self.graph:
@@ -59,8 +60,8 @@ class PathPlanning:
 class Astar(PathPlanning):
     def __init__(self, graph: dict, nodes: dict,
                  search_memo: dict = {}, nodes_dist_memo: dict = {}, 
-                 max_steps: int = 2000, max_dist: int = 10000, level='debug'):
-        super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level)
+                 max_steps: int = 2000, max_dist: int = 10000, level='debug', ll=True):
+        super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level, ll)
         
     def search(self, src, dst, max_steps=None, max_dist=None, weight='cost'):
         if src == dst:
@@ -100,7 +101,7 @@ class Astar(PathPlanning):
                 if distance[nxt] > max_dist:
                     continue
                 
-                _h = calculate_nodes_dist(self.nodes, dst, nxt, self.nodes_dist_memo)
+                _h = calculate_nodes_dist(self.nodes, dst, nxt, self.nodes_dist_memo, self.ll)
                 heapq.heappush(queue, (new_cost + _h, nxt) )
                 came_from[nxt] = cur
 

@@ -5,12 +5,12 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 import warnings
 
-from .ops import project_points_2_linestring
-from .haversineDistance import haversine_geoseries
+from .ops import project_point_2_linestring
+from .ops.distance import geoseries_distance
 
 
-def get_K_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', radius: float = 5e-4, top_k=5,
-                    predicate: str = 'intersects', check_diff=True, ll=True, project=True, keep_geom=False, normalized=True):
+def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', radius: float = 50, top_k=None,
+                    predicate: str = 'intersects', check_diff=True, project=True, keep_geom=True, normalized=False):
     """Get k nearest geometry of query, within a searching radius. 
     This step can be efficiently perfermed with the build-in grid-based spatial index.
 
@@ -84,39 +84,36 @@ def get_K_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
         _query.index.set_names(query_id, inplace=True)
     else:
         raise TypeError(query)
-    
-    # spatial query
-    query_geoms = _query.apply(lambda i: shapely.box(i.x - radius, i.y - radius, i.x + radius, i.y + radius))
-    
-    # cands = gdf.sindex.query_bulk(
-        # _query.buffer(radius) if radius else _query, predicate)
+
+    _query = query.copy()
+    _query.index.set_names(query_id, inplace=True)
+
+    # query_bulk
+    get_box = lambda i: shapely.box(i.x - radius, i.y - radius, i.x + radius, i.y + radius)
+    query_geoms = _query.apply(get_box)
     cands = gdf.sindex.query_bulk(query_geoms, predicate)
     if len(cands[0]) == 0:
-        return None
+        return None, None
 
     _points = _query.iloc[cands[0]]
-    df_cands = gdf.iloc[cands[1]].rename(columns={'geometry': 'edge_geom'}).reset_index(drop=True)
-    edge_atts = list(df_cands)
+    df_cands = gdf.iloc[cands[1]]
+    df_cands.rename(columns={'geometry': 'edge_geom'}, inplace=True)
     df_cands.loc[:, query_id] = _points.index
     df_cands.loc[:, "query_geom"] = _points.values
-    df_cands = df_cands[[query_id] + edge_atts + ['query_geom']]
 
     # dist_p2c
     if project:
         assert np.all(query.geom_type == 'Point'), "Project only support `Point`"
-        get_cut_point = lambda x: project_points_2_linestring(x['query_geom'], x['edge_geom'], normalized)
+        get_cut_point = lambda x: project_point_2_linestring(x['query_geom'], x['edge_geom'], normalized)
         df_cands.loc[:, ['proj_point', 'offset']] = df_cands.apply(get_cut_point, axis=1, result_type='expand').values
-
-        if not ll:
-            cal_proj_dist = lambda x: x['query_geom'].distance(x['proj_point'])
-            df_cands.loc[:, 'dist_p2c'] = df_cands.apply(cal_proj_dist, axis=1)
-        else:
-            df_cands.loc[:, 'dist_p2c'] = haversine_geoseries(
-                df_cands['query_geom'], df_cands['proj_point'])
+        df_cands.loc[:, 'dist_p2c'] = geoseries_distance(df_cands['query_geom'], df_cands['proj_point'])
+        df_cands = gpd.GeoDataFrame(df_cands, crs=gdf.crs, geometry='proj_point')
     else:
         cal_proj_dist = lambda x: x['query_geom'].distance(x['edge_geom'])
         df_cands.loc[:, 'dist_p2c'] = df_cands.apply(cal_proj_dist, axis=1)
-    df_cands = _filter_candidate(df_cands, query_id, top_k)
+    
+    if top_k:
+        df_cands = _filter_candidate(df_cands, query_id, top_k)
     
     if not keep_geom:
         df_cands.drop(columns=["query_geom", "edge_geom"], inplace=True)
@@ -131,16 +128,14 @@ def get_K_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
 
     return df_cands, no_cands_query
 
-def plot_candidates(points, edges, match_res):
-    ax = points.plot()
-    # edges.plot(ax=ax)
+def plot_candidates(res):
+    from ..geo.vis import plot_geodata
+    _, ax = plot_geodata(res, color='r', tile_alpha=.6, alpha=0)
 
-    res = gpd.GeoDataFrame(match_res)
-    res.set_geometry('edge_geom', inplace=True)
+    res.set_geometry('edge_geom').plot(ax=ax, column='dist_p2c', cmap='Reds_r', legend='candidates')
+    res.set_geometry('proj_point').plot(ax=ax,  cmap='Reds_r')
+    res.set_geometry('query_geom').plot(ax=ax, marker='*', label='Point', zorder=9)
 
-    for _, group in res.groupby('PID'):
-        group.plot(ax=ax, column='dist_p2c', alpha=.5, linestyle='--', legend=True, cmap='RdBu_r')
-        
     return ax
 
 def _filter_candidate(df: gpd.GeoDataFrame,

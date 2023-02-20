@@ -3,13 +3,10 @@ import geopandas as gpd
 from shapely.geometry import LineString
 
 from .status import STATUS
-from ..graph import GeoDigraph
-from ..geo.misc import merge_coords_intervals_on_same_edge
+from .misc import get_shared_line
 
 
-def get_path(net:GeoDigraph, 
-             traj:gpd.GeoDataFrame, 
-             rList:gpd.GeoDataFrame, 
+def get_path(rList:gpd.GeoDataFrame, 
              graph:gpd.GeoDataFrame, 
              cands:gpd.GeoDataFrame,
              metric = {},
@@ -44,12 +41,12 @@ def get_path(net:GeoDigraph,
     eids_lst = eids[keep_cond].tolist()
 
     res = {'epath': eids_lst}
-    step_0, step_n = _get_first_and_last_step(cands, rList)
+    step_0, step_n = _get_first_and_step_n(cands, rList)
 
     # Case: one step
     if len(eids_lst) == 1:
-        tmp = merge_coords_intervals_on_same_edge(step_0, step_n)
-        res['step_0'] = tmp.tolist() if tmp is not None else []
+        tmp = get_shared_line(step_0, step_n)
+        res['step_0'] = tmp
         if metric.get('prob', 1) < prob_thres:
             metric['status'] = STATUS.FAILED
         else:
@@ -60,8 +57,8 @@ def get_path(net:GeoDigraph,
     # update first/last step 
     n = len(eids_lst) - 1
     assert n > 0, "Check od list"
-    res['step_0'] = step_0.tolist() if step_0 is not None else []
-    res['step_n'] = step_n.tolist() if step_n is not None else []
+    res['step_0'] = step_0
+    res['step_n'] = step_n
 
     # update metric
     coef = 1 / len(steps.dist_prob)
@@ -81,7 +78,7 @@ def get_path(net:GeoDigraph,
     return res, steps
 
 
-def _get_first_and_last_step(cands, rList):
+def _get_first_and_step_n(cands, rList):
     step_0 = cands.query(
         f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
     step_n = cands.query(
@@ -89,25 +86,3 @@ def _get_first_and_last_step(cands, rList):
 
     return step_0, step_n
 
-
-def get_connectors(traj, path):
-    p_0, p_n = traj.iloc[0].geometry, traj.iloc[-1].geometry
-    # BUG geometry 为空
-    try:
-        connector_0 = LineString([(p_0.x, p_0.y), path.loc[0, 'geometry'].coords[0]])
-    except:
-        connector_0 = LineString([(p_0.x, p_0.y), (p_0.x, p_0.y)])
-    try:
-        connector_1 = LineString([path.loc[path.shape[0] - 1, 'geometry'].coords[-1], (p_n.x, p_n.y)])
-    except:
-        connector_1 = LineString([(p_n.x, p_n.y), (p_n.x, p_n.y)])
-        
-    connectors = gpd.GeoDataFrame({
-        'geometry': [
-            connector_0, 
-            connector_1], 
-        'name':['connector_0', 'connector_1']})
-
-    return connectors
-
-        

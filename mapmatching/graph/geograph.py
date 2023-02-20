@@ -14,23 +14,32 @@ from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
 class GeoDigraph(Digraph):
-    def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, *args, **kwargs):
+    def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, 
+                 crs_wgs:int=4326, crs_prj:int=None, ll:bool=False, *args, **kwargs):
         self.df_edges = df_edges
         self.df_nodes = df_nodes
         self.search_memo = {}
         self.nodes_dist_memo = {}
+        self.ll = ll
 
-        if df_edges is not None and df_nodes is not None:
-            super().__init__(df_edges[['src', 'dst', 'dist']].sort_index().values, 
+        self.crs_prj = crs_prj
+        self.crs_wgs = crs_wgs
+
+        if df_edges is None or df_nodes is None:
+            return
+        
+        if not ll:
+            self.to_proj()
+        super().__init__(df_edges[['src', 'dst', 'dist']].sort_index().values, 
                              df_nodes.to_dict(orient='index'), *args, **kwargs)
-            self.init_searcher()
+        self.init_searcher()
 
     def init_searcher(self, algs='astar'):
         if algs == 'astar':
             self.searcher = Astar(self.graph, self.nodes, 
                                 search_memo=self.search_memo, 
                                 nodes_dist_memo=self.nodes_dist_memo,
-                                max_steps=2000, max_dist=10000)
+                                max_steps=2000, max_dist=10000, ll=self.ll)
         else:
             self.searcher = Bi_Astar(self.graph, self.graph_r, self.nodes,
                                     search_memo=self.search_memo,
@@ -46,7 +55,7 @@ class GeoDigraph(Digraph):
         if geom and 'geometry' not in route:
             lst = route['epath']
             if lst is None:
-                route['geometry'] = None
+                route['geometry'] = LineString()
             else:
                 route['geometry'] = self.transform_epath_to_linestring(lst)
         
@@ -258,30 +267,35 @@ class GeoDigraph(Digraph):
             
         return NotImplementedError
 
-
-class GeoDigraphLL(GeoDigraph):
-    def __init__(self, df_edges: GeoDataFrame = None, df_nodes: GeoDataFrame = None, crs_wgs=4326, crs_prj=None, ll=False, *args, **kwargs):
-        super().__init__(df_edges, df_nodes, *args, **kwargs)
-        if crs_prj is None:
-            crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
-        self.crs_wgs = crs_wgs
-        self.crs_prj = crs_prj
+    """ coord system """
+    def align_crs(self, gdf):
+        assert gdf.crs is not None
+        assert self.crs_prj is not None
         
-        if not ll:
-            self.to_proj()
+        gdf.to_crs(self.epsg, inplace=True)
 
+        return gdf
+
+    def to_wgs(self, gdf):
+        assert gdf.crs is not None
+        gdf.to_crs(self.crs_wgs, inplace=True)
+
+        return gdf
 
     def to_ll(self):
         self.df_edges.to_crs(self.crs_wgs, inplace=True)
         self.df_nodes.to_crs(self.crs_wgs, inplace=True)
         
-        return 
+        return True
 
     def to_proj(self):
+        if self.crs_prj is None:
+            self.crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
+
         self.df_edges.to_crs(self.crs_prj, inplace=True)
         self.df_nodes.to_crs(self.crs_prj, inplace=True)
 
-        return
+        return True
 
     @property
     def crs(self):
@@ -290,7 +304,7 @@ class GeoDigraphLL(GeoDigraph):
     @property
     def epsg(self):
         return self.df_edges.crs.to_epsg()
-    
+
     
 if __name__ == "__main__":
     network = GeoDigraph()

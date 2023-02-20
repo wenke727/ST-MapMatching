@@ -1,6 +1,6 @@
 import numpy as np
 import geopandas as gpd
-from .pointToLine import get_vertical_dist
+from .distance import get_vertical_dist
 
 
 def dp_compress(point_list, dist_thres=8, verbose=False):
@@ -26,7 +26,11 @@ def dp_compress(point_list, dist_thres=8, verbose=False):
 
             while(index < end):
                 cur_vertical_dist = get_vertical_dist(
-                    point_list[index][:2], point_list[start][:2], point_list[end][:2])
+                    point_list[index][:2], 
+                    point_list[start][:2], 
+                    point_list[end][:2],
+                    ll=False
+                )
                 if cur_vertical_dist > max_vertical_dist:
                     max_vertical_dist = cur_vertical_dist
                     key_point_index = index

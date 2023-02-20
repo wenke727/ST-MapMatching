@@ -1,28 +1,25 @@
 import numpy as np
 import pandas as pd
-from haversine import haversine_vector, Unit
 
 from ..utils import timeit
 from .status import CANDS_EDGE_TYPE
 from ..geo.azimuth import cal_coords_seq_azimuth
-
+from ..geo.ops.to_nparray import points_geoseries_2_ndarray
+from ..geo.ops.distance import coords_seq_distance
 
 def _cal_traj_params(points, move_dir=True, check=False):
-    # from ..geo.misc import cal_points_geom_seq_distacne
-    coords = points.geometry.apply(lambda x: [x.y, x.x]).values.tolist()
-    coords = np.array(coords)
-
-    dist = haversine_vector(coords[:-1], coords[1:], unit=Unit.METERS)
+    coords = points_geoseries_2_ndarray(points.geometry)
+    dist_arr, _ = coords_seq_distance(coords)
     idxs = points.index
     
     if check:
-        zero_idxs = np.where(dist==0)[0]
+        zero_idxs = np.where(dist_arr==0)[0]
         if len(zero_idxs):
             print(f"Exists dumplicates points: {[(i, i+1) for i in zero_idxs]}")
         
     _dict = {'pid_0': idxs[:-1],
-             'pid_1':idxs[1:],
-             'd_euc': dist}
+             'pid_1': idxs[1:],
+             'd_euc': dist_arr}
 
     if move_dir:
         dirs = cal_coords_seq_azimuth(coords)
@@ -32,14 +29,12 @@ def _cal_traj_params(points, move_dir=True, check=False):
 
     return res
 
-
 def _identify_edge_flag(gt):
     # (src, dst) on the same edge
     gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
-    # FIXME `<` or `<=`
-    cond = (gt['dist'] - gt['first_step_len']) <= gt['last_step_len']
+    cond = (gt['dist'] - gt['step_0_len']) <= gt['step_n_len'] # FIXME `<` or `<=`
 
     same_edge_normal = same_edge & cond
     gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
@@ -50,17 +45,16 @@ def _identify_edge_flag(gt):
 
     return gt
 
-
 def construct_graph( points,
                      cands,
                      common_attrs=['pid', 'eid'],
                      left_attrs=['dst', 'len_1', 'seg_1', 'dist'],
                      right_attrs=['src', 'len_0', 'seg_0', 'observ_prob'],
                      rename_dict={
-                            'seg_0': 'last_step',
-                            'len_0': 'last_step_len',
-                            'seg_1': 'first_step',
-                            'len_1': 'first_step_len',
+                            'seg_0': 'step_n',
+                            'len_0': 'step_n_len',
+                            'seg_1': 'step_0',
+                            'len_1': 'step_0_len',
                             'cost': 'd_sht'},
                      dir_trans=True,
                      gt_keys=['pid_0', 'eid_0', 'eid_1']
@@ -69,8 +63,7 @@ def construct_graph( points,
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
 
     Parameters:
-        geometry = 除去 first step 和 last step 后，剩下的中间段
-        path = first_step + geometry + last_step
+        path = step_0 + geometry + step_n
 
     """
     layer_ids = np.sort(cands.pid.unique())
@@ -84,8 +77,7 @@ def construct_graph( points,
 
     # right
     right = cands[common_attrs + right_attrs]
-    right.loc[:, 'mgd'] = right.pid.apply(
-        lambda x: prev_layer_dict[x])
+    right.loc[:, 'mgd'] = right.pid.apply(lambda x: prev_layer_dict[x])
     right.query("mgd >= 0", inplace=True)
 
     # Cartesian product
@@ -97,9 +89,8 @@ def construct_graph( points,
     _identify_edge_flag(gt)
 
     # There is a situation where the node does not match,             
-    # the current strategy is to ignore it, and maybe it has a problem of the order
-    traj_info = _cal_traj_params(
-        points.loc[cands.pid.unique()], move_dir=dir_trans)
+    traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
+    
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
     gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
     if gt_keys:

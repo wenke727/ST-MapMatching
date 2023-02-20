@@ -2,7 +2,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from haversine import haversine, haversine_vector, Unit
-from .haversineDistance import cal_coords_seq_distance
+from .ops.distance import cal_coords_seq_distance
 
 
 def get_foot_point(point, line_p1, line_p2):
@@ -79,25 +79,8 @@ def cal_foot_point_on_polyline( point: Point, line: LineString, foot=True, ratio
     
     return flag
 
-def get_vertical_dist(pointX, pointA, pointB):
-    a, b, c = haversine_vector(
-        np.array([pointA, pointA, pointB])[:, ::-1],
-        np.array([pointB, pointX, pointX])[:, ::-1],
-        unit=Unit.METERS
-    )
 
-    #当弦两端重合时,点到弦的距离变为点间距离
-    if a==0:
-        return b
-
-    p = (a + b + c) / 2
-    S = np.sqrt(np.abs(p*(p-a)*(p-b)*(p-c)))
-    
-    vertical_dist = S * 2 / a
-
-    return vertical_dist
-
-def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coord_sys=False):
+def project_point_to_polyline(point:Point, polyline:LineString, plot=False, ll=False):
     """Find the shortest distance and foot point from a point to a line segment, and split the segment into two part and update some attributes.
     
     Judge the realtion between point and the line, there are three situation:
@@ -151,7 +134,7 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
     
     foots = np.vstack([factors * pqx + lines[:, 0, 0], 
                        factors * pqy + lines[:, 0, 1]]).T.round(7)
-    if coord_sys:
+    if ll:
         line_length = haversine_vector(coords[:-1, ::-1], coords[1:, ::-1], unit=Unit.METERS)  
     else:
         line_length = np.sqrt(d)
@@ -168,7 +151,7 @@ def project_point_to_polyline(point:Point, polyline:LineString, plot=False, coor
     else:
         seg_0 = np.vstack([coords[:split_idx+1, :], foots[split_idx]])
         seg_1 = np.vstack([foots[split_idx], coords[split_idx+1:, :]])
-        if coord_sys:
+        if ll:
             len_0 = sum(line_length[:split_idx]) + haversine(seg_0[-2][::-1], seg_0[-1][::-1], unit=Unit.METERS)
             len_1 = sum(line_length[split_idx+1:]) + haversine(seg_1[0][::-1], seg_1[1][::-1], unit=Unit.METERS)
         else:
@@ -239,7 +222,7 @@ def point_to_polyline_process_wgs(point:Point, polyline:LineString, in_crs:int=4
     tmp = gpd.GeoSeries([point, polyline]).set_crs(in_crs, allow_override=True).to_crs(out_crs)
     p_, l_ = tmp.loc[0], tmp.loc[1]
     
-    res = project_point_to_polyline(p_, l_, coord_sys=True, plot=plot)
+    res = project_point_to_polyline(p_, l_, ll=True, plot=plot)
     
     helper = lambda x: LineString(x) if x is not None else LineString([])
     tmp = gpd.GeoSeries([helper(res['seg_0']), helper(res['seg_1'])]).set_crs(out_crs, allow_override=True).to_crs(in_crs)
@@ -326,7 +309,6 @@ if __name__ == "__main__":
 
     # 63 us
     seg_0, seg_1, len_0, len_1 = project_point_2_linestring(node, polyline, True)
-    cal_coords_seq_distance(np.array(seg_0.coords))
 
     # 180 us
     project_point_to_polyline(node, polyline, plot=False)

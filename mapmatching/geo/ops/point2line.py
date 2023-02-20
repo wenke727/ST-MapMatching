@@ -5,7 +5,7 @@ from shapely import Point, LineString
 import geopandas as gpd
 from geopandas import GeoDataFrame
 
-from ..haversineDistance import haversine_geoseries, cal_coords_seq_distance
+from .distance import cal_coords_seq_distance, geoseries_distance
 
 
 @numba.jit
@@ -23,19 +23,18 @@ def get_first_index(arr, val):
     """
     for i in range(len(arr)):
         if arr[i] >= val:
-            return i
+            return i + 1
+        val -= arr[i]
 
     return -1
 
-def project_points_2_linestring(point:Point, line:LineString, normalized:bool=True, precision=1e-7):
+def project_point_2_linestring(point:Point, line:LineString, normalized:bool=True):
     dist = line.project(point, normalized)
     proj_point = line.interpolate(dist, normalized)
 
-    proj_point = shapely.set_precision(proj_point, precision)
-
     return proj_point, dist
 
-def cut_linestring(line:LineString, offset:float, point:Point=None, normalized=True, cal_dist=True):
+def cut_linestring(line:LineString, offset:float, point:Point=None, normalized=False):
     _len = 1 if normalized else line.length
     coords = np.array(line.coords)
 
@@ -44,11 +43,12 @@ def cut_linestring(line:LineString, offset:float, point:Point=None, normalized=T
     elif offset >= _len:
         res = {"seg_0": coords, "seg_1": None}
     else:
-        points = np.array([Point(*i) for i in coords])
-        dist_intervals = line.project(points, normalized)
+        # points = np.array([Point(*i) for i in coords])
+        # dist_intervals = line.project(points, normalized)
+        dist_arr, _ = cal_coords_seq_distance(coords)
 
-        idx = get_first_index(dist_intervals, offset)
-        pd = dist_intervals[idx]
+        idx = get_first_index(dist_arr, offset)
+        pd = np.sum(dist_arr[:idx])
         if pd == offset:
             coords_0 = coords[:idx+1]
             coords_1 = coords[idx:]
@@ -61,15 +61,14 @@ def cut_linestring(line:LineString, offset:float, point:Point=None, normalized=T
         
         res = {'seg_0': coords_0, 'seg_1': coords_1}
 
-    if cal_dist:
-        res['len_0'] = cal_coords_seq_distance(res['seg_0'])[1] if res['seg_0'] is not None else 0
-        res['len_1'] = cal_coords_seq_distance(res['seg_1'])[1] if res['seg_1'] is not None else 0
+    res['seg_0'] = LineString(res['seg_0'])
+    res['seg_1'] = LineString(res['seg_1'])
 
     return res
 
 def test_cut_linestring(line, point):
     # test: project_point_2_linestring
-    cp, dist = project_points_2_linestring(point, line)
+    cp, dist = project_point_2_linestring(point, line)
     data = {'name': ['point', 'line', 'cp'],
             'geometry': [point, line, cp]
             }
@@ -131,22 +130,21 @@ def project_points_2_linestrings(points:GeoDataFrame, lines:GeoDataFrame,
     att_lst = ['proj_point', 'offset']
     proj_df.loc[:, 'point_geom'] = points.geometry
     proj_df.loc[:, att_lst] = proj_df.apply(
-        lambda x: project_points_2_linestring(
+        lambda x: project_point_2_linestring(
             x.point_geom, x.edge_geom, normalized, precision), 
         axis=1, result_type='expand'
     ).values
 
-    if not ll:
-        cal_proj_dist = lambda x: x['query_geom'].distance(x['proj_point'])
-        proj_df.loc[:, 'dist_p2c'] = proj_df.apply(cal_proj_dist, axis=1)
-    else:
-        proj_df.loc[:, 'dist_p2c'] = haversine_geoseries(
-            proj_df['query_geom'], proj_df['proj_point'])
+    proj_df.loc[:, 'dist_p2c'] = geoseries_distance(proj_df['query_geom'], proj_df['proj_point'])
 
     if drop_ori_geom:
         proj_df.drop(columns=['point_geom', 'edge_geom'], inplace=True)
 
     return gpd.GeoDataFrame(proj_df).set_geometry('proj_point')
+
+
+""" write by myself """
+
 
 
 if __name__ == "__main__":

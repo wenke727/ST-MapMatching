@@ -8,7 +8,42 @@
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 - [x] 中断处理，match/viterbi.py
-- [ ] 球面坐标 -> 投影坐标，一系列的变更工作
+- [x] 球面坐标 -> 投影坐标，一系列的变更工作
+- [ ] 中间过程，探讨 geom 是否有必要，减少非必要计算的开销
+
+## [V2.0.0.a] - 2023-2-15
+
+### Added
+
+- geo
+  - distance
+    - geoseries_distance
+    - coords_seq_distance
+    - get_vertical_dist
+  - linear_referencing
+    - linear_referencing
+    - closest_point_on_segment
+  - to_nparray
+    - points_geoseries_2_ndarray
+- GeoGraph
+  - align_crs
+  - to_wgs
+  - to_proj
+- match
+  - misc
+    - get_shared_arr
+    - get_shared_line
+    - merge_geom_steps：连接三段 geometry 要素
+
+### Changed
+
+- GeoGraph
+
+  使用 `投影坐标`，而非`球面坐标`，解决长度计算不准确的问题
+
+- metric
+
+  - DP 算法中的 for 循环使用 numba 加速
 
 ## [V1.3.7] - 2023-2-15
 

@@ -1,29 +1,15 @@
-import heapq
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from loguru import logger
-from collections import defaultdict
 from shapely.geometry import box
 
-from ..utils import timeit, Timer
-from ..geo.query import get_K_neigh_geoms
-from ..geo.misc import geom_series_distance
+from ..utils import Timer
+from ..geo.query import get_k_neigh_geoms
 from ..geo.ops.point2line import cut_linestring
+from ..geo.ops.distance import geom_series_distance
 from ..geo.pointToLine import project_point_to_polyline
 
-
-def plot_candidates(points, edges, match_res):
-    ax = edges.plot()
-    points.plot(ax=ax)
-
-    res = gpd.GeoDataFrame(match_res)
-    res.set_geometry('edge_geom', inplace=True)
-
-    for _, group in res.groupby('pid'):
-        group.plot(ax=ax, color='r', linewidth=3, alpha=.5, linestyle='--')
-        
-    return 
 
 def _filter_candidate(df: gpd.GeoDataFrame,
                       top_k: int = 5,
@@ -187,10 +173,9 @@ def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
 
     return np.sqrt(_dist)
 
-def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1']):
+def project_point_to_line_segment(points, edges, keep_cols=['len_0', 'len_1', 'seg_0', 'seg_1'], ll=True):
     def func(x): 
-        return project_point_to_polyline(
-            x.points, x.edges, coord_sys=True)
+        return project_point_to_polyline(x.points, x.edges, ll=ll)
 
     df = pd.DataFrame({'points': points, "edges": edges})
     res = df.apply(func, axis=1, result_type='expand')[keep_cols]
@@ -212,22 +197,25 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            crs_prj: int = 900913,
                            ):
     # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
-    cands = get_k_neigbor_edges(points, edges, top_k, radius,
-                                edge_attrs, pid, eid, predicate, ll, 
-                                ll_to_utm_dis_factor, crs_wgs, crs_prj)
+    # cands = get_k_neigbor_edges(points, edges, top_k, radius,
+    #                             edge_attrs, pid, eid, predicate, ll, 
+    #                             ll_to_utm_dis_factor, crs_wgs, crs_prj)
 
-    if cands is not None:
-        cands[point_to_line_attrs] = project_point_to_line_segment(
-            cands.point_geom, cands.edge_geom, point_to_line_attrs)
+    # if cands is not None:
+    #     cands[point_to_line_attrs] = project_point_to_line_segment(
+    #         cands.point_geom, cands.edge_geom, point_to_line_attrs, ll)
         
-        cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+    #     cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
 
-    # _cands, _ = get_K_neigh_geoms(points.geometry, edges[['eid'] + edge_attrs], query_id='pid',  project=True, keep_geom=True)
-    # _cands.loc[:, ['seg_0', 'seg_1', "len_0", 'len_1']] = _cands.apply(
-    #     lambda x: cut_linestring(x['edge_geom'], x['offset']),
-    #     axis=1, result_type='expand'
-    # )
-    # _cands.loc[:, 'observ_prob'] = cal_observ_prob(_cands.dist_p2c)
+    cands, _ = get_k_neigh_geoms(points.geometry, edges[['eid'] + edge_attrs], 
+                                 query_id='pid', project=True, top_k=top_k, keep_geom=True, radius=50)
+
+    cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+    cands.loc[:, ['seg_0', 'seg_1']] = cands.apply(
+        lambda x: cut_linestring(x['edge_geom'], x['offset'], x['proj_point']), 
+        axis=1, result_type='expand')
+    cands.loc[:, 'len_0'] = gpd.GeoSeries(cands.seg_0).length
+    cands.loc[:, 'len_1'] = gpd.GeoSeries(cands.seg_1).length
 
     return cands
     

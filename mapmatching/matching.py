@@ -6,14 +6,13 @@ from copy import deepcopy
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from shapely.geometry import LineString
 
-from .graph import GeoDigraph, GeoDigraphLL
+from .graph import GeoDigraph
 from .update_network import check_steps
 from .geo.metric import lcss, edr, erp
 from .geo.ops import check_duplicate_points
 from .geo.ops.point2line import project_points_2_linestrings
-from .geo.douglasPeucker import simplify_trajetory_points
+from .geo.ops.simplify import simplify_trajetory_points
 from .geo.ops.resample import resample_polyline_seq_to_point_seq, resample_point_seq
 
 from .osmnet.build_graph import build_geograph
@@ -25,9 +24,8 @@ from .match.candidatesGraph import construct_graph
 from .match.spatialAnalysis import analyse_spatial_info
 from .match.geometricAnalysis import analyse_geometric_info
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
-from .match.visualization import debug_gt_level, plot_matching_result, debug_gt_level_parallel
+from .match.visualization import plot_matching_result, debug_gt_level_parallel
 
-from .utils.timer import timeit
 from .utils.logger_helper import make_logger
 from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER
@@ -37,7 +35,7 @@ SET_PANDAS_LOG_FORMET()
 
 class ST_Matching():
     def __init__(self,
-                 net: GeoDigraphLL,
+                 net: GeoDigraph,
                  max_search_steps=2000,
                  max_search_dist=10000,
                  top_k_candidates=5,
@@ -47,10 +45,12 @@ class ST_Matching():
                  prob_thres=.8, 
                  log_folder='./log',
                  console=True,
+                 ll=False
                  ):
         self.net = net
         self.crs_wgs = crs_wgs
         self.crs_prj = crs_prj
+        self.ll = ll
         self.debug_folder = DEBUG_FOLDER
         self.logger = make_logger(log_folder, console=console, level="INFO")
         if not os.path.exists(self.debug_folder):
@@ -69,6 +69,8 @@ class ST_Matching():
                  check_duplicate=False, check_topo=False):
         res = {'status': STATUS.UNKNOWN}
         
+        traj = self.net.align_crs(traj)
+
         # simplify trajectory
         if simplify:
             ori_traj = traj
@@ -80,7 +82,7 @@ class ST_Matching():
         # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
         cands = analyse_geometric_info(
-            points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius)
+            points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius, ll=self.ll)
         
         # is_valid
         s, route = self._is_valid(traj, cands, res)
@@ -90,16 +92,18 @@ class ST_Matching():
         # spatial analysis
         res['probs'] = {}
         rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
-        match_res, steps = get_path(self.net, traj, rList, graph, cands, metric=res['probs'])
+        match_res, steps = get_path(rList, graph, cands, metric=res['probs'])
         if 'status' in res['probs']:
             res['status'] = res['probs']['status']
             del res['probs']['status']
         res.update(match_res)
 
         if details or check_topo:
-            attrs = ['pid_1', 'first_step_len', 'last_step_len', 'cost', 'w', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 
-                     'flag', 'status', 'dst', 'src','first_step', 'geometry', 'last_step', 'path', 'epath', 'vpath','dist']
-
+            attrs = ['pid_1', 'step_0_len', 'step_n_len', 'cost', 'd_sht', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 
+                     'flag', 'status', 'dst', 'src','step_0', 'geometry', 'step_n', 'path', 'epath', 'vpath','dist']
+            if 'move_dir' in graph:
+                attrs += ['move_dir']
+                
             # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
             attrs = [i for i in attrs if i in list(graph)]
             _dict = {
@@ -184,14 +188,14 @@ class ST_Matching():
             path = self.transform_res_2_path(res)
         
         if resample:
-            _, path_coords_np = resample_polyline_seq_to_point_seq(path.geometry, step=resample)
+            _, path_coords_np = resample_polyline_seq_to_point_seq(path.geometry, step=resample,)
             _, traj_coords_np = resample_point_seq(traj.geometry, step=resample)
         else:
             path_coords_np = np.concatenate(path.geometry.apply(lambda x: x.coords[:]).values)
             traj_coords_np = np.concatenate(traj.geometry.apply(lambda x: x.coords[:]).values)
             
         eval_funs = {
-            'lcss': [lcss, (traj_coords_np, path_coords_np, eps)], 
+            'lcss': [lcss, (traj_coords_np, path_coords_np, eps, self.ll)], 
             'edr': [edr, (traj_coords_np, path_coords_np, eps)], 
             'edp': [erp, (traj_coords_np, path_coords_np, g)]
         }
@@ -277,10 +281,10 @@ class ST_Matching():
 
     def transform_res_2_path(self, res):
         path = self.net.get_edge(res['epath'], reset_index=True)
-        path.loc[0, 'geometry'] = LineString(res['step_0'])
+        path.loc[0, 'geometry'] = res['step_0']
         if 'step_n' in res:
             n = path.shape[0] - 1
-            path.loc[n, 'geometry'] = LineString(res['step_n'])
+            path.loc[n, 'geometry'] = res['step_n']
         
         path = path[~path.geometry.is_empty]
 
