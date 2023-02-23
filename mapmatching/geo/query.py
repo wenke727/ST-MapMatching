@@ -1,14 +1,13 @@
 import shapely
 import numpy as np
-import pandas as pd
 import geopandas as gpd
 from geopandas import GeoDataFrame
 import warnings
 
-from .ops import project_point_2_linestring
-from .ops.distance import geoseries_distance
+from .ops.linear_referencing import linear_referencing
+from ..utils import timeit
 
-
+@timeit
 def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', radius: float = 50, top_k=None,
                     predicate: str = 'intersects', check_diff=True, project=True, keep_geom=True, normalized=False):
     """Get k nearest geometry of query, within a searching radius. 
@@ -27,9 +26,6 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
 
     Returns:
         GeoDataFrame: Query result
-    """
-
-    """
     Example:
     ```
         # case 1
@@ -66,6 +62,7 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
     # check sindex
     if not gdf.has_sindex:
         try:
+            print("rebuild sindex: ")
             gdf.sindex
         except:
             raise ValueError()
@@ -95,23 +92,11 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
     if len(cands[0]) == 0:
         return None, None
 
-    _points = _query.iloc[cands[0]]
-    df_cands = gdf.iloc[cands[1]]
-    df_cands.rename(columns={'geometry': 'edge_geom'}, inplace=True)
-    df_cands.loc[:, query_id] = _points.index
-    df_cands.loc[:, "query_geom"] = _points.values
+    df_cands = _get_cands(_query, gdf, cands, query_id)
+    _project(df_cands, project)
 
-    # dist_p2c
-    if project:
-        assert np.all(query.geom_type == 'Point'), "Project only support `Point`"
-        get_cut_point = lambda x: project_point_2_linestring(x['query_geom'], x['edge_geom'], normalized)
-        df_cands.loc[:, ['proj_point', 'offset']] = df_cands.apply(get_cut_point, axis=1, result_type='expand').values
-        df_cands.loc[:, 'dist_p2c'] = geoseries_distance(df_cands['query_geom'], df_cands['proj_point'])
-        df_cands = gpd.GeoDataFrame(df_cands, crs=gdf.crs, geometry='proj_point')
-    else:
-        cal_proj_dist = lambda x: x['query_geom'].distance(x['edge_geom'])
-        df_cands.loc[:, 'dist_p2c'] = df_cands.apply(cal_proj_dist, axis=1)
-    
+    if radius:
+        df_cands.query(f"dist_p2c <= {radius}", inplace=True)
     if top_k:
         df_cands = _filter_candidate(df_cands, query_id, top_k)
     
@@ -128,6 +113,35 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
 
     return df_cands, no_cands_query
 
+@timeit
+def _get_cands(_query, gdf, cands, query_id):
+    _points = _query.iloc[cands[0]]
+    df_cands = gdf.iloc[cands[1]]
+    df_cands.rename(columns={'geometry': 'edge_geom'}, inplace=True)
+    df_cands.loc[:, query_id] = _points.index
+    df_cands.loc[:, "query_geom"] = _points.values
+
+    return df_cands
+
+@timeit
+def _project(df_cands, project=True):
+    # dist_p2c
+    if not project:
+        cal_proj_dist = lambda x: x['query_geom'].distance(x['edge_geom'])
+        df_cands.loc[:, 'dist_p2c'] = df_cands.apply(cal_proj_dist, axis=1)
+
+        return df_cands
+
+    # assert np.all(query.geom_type == 'Point'), "Project only support `Point`"
+    df_projs = df_cands.apply(
+        lambda x: linear_referencing(x['query_geom'], x['edge_geom'], cut=True), 
+        axis=1, result_type='expand')
+    df_cands.loc[:, list(df_projs)] = df_projs.values
+    # df_cands = gpd.GeoDataFrame(df_cands, crs=gdf.crs, geometry='proj_point')
+
+    return df_cands
+    
+
 def plot_candidates(res):
     from ..geo.vis import plot_geodata
     _, ax = plot_geodata(res, color='r', tile_alpha=.6, alpha=0)
@@ -138,6 +152,7 @@ def plot_candidates(res):
 
     return ax
 
+@timeit
 def _filter_candidate(df: gpd.GeoDataFrame,
                       pid: str = 'pid',
                       top_k: int = 5,

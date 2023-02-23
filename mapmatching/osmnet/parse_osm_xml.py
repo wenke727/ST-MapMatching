@@ -15,7 +15,7 @@ from ..osmnet.misc import Bunch, cal_od_straight_distance
 from ..osmnet.twoway_edge import add_reverse_edge, swap_od, edge_offset
 from ..osmnet.combine_edges import pipeline_combine_links, parallel_process
 from ..setting import highway_filters, link_type_level_dict
-from ..geo.ops.to_nparray import points_geoseries_2_ndarray
+from ..geo.ops.to_array import points_geoseries_2_ndarray
 
 
 class WayHandler(SimpleHandler):

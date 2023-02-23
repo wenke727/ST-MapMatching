@@ -96,7 +96,7 @@ def print_level(df_layer):
     f = lambda x: sorted(df_layer.index.get_level_values(x).unique())
     return f"{f(1)} -> {f(2)}"
 
-def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='info'):
+def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='trace'):
     # Initialize
     times = []
     timer = Timer()
@@ -118,8 +118,10 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
         else:
             prev_probs = np.array(
                 [f_score[-1][i] for i in df_layer.index.get_level_values(1)])
-
+        
+        # timer.start()
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
+        # ti mes.append(timer.stop())
         df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
         _df = prune_layer(df_layer, idx >= trim_layer, trim_factor)
 

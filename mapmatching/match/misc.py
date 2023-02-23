@@ -5,6 +5,80 @@ import numpy as np
 from shapely import LineString
 from shapely.ops import linemerge
 
+def merge_step_arrs(x, check=True):
+    lst = [i for i in [x.step_0, x.step_1, x.step_n] if i is not None]
+    if len(lst) == 0:
+        warnings.warn("All geoms are None")
+        return None
+    
+    if len(lst) == 1:
+        return lst[0]
+
+    # TODO 连接处会重复节点
+    coords = np.concatenate(lst)
+    
+    return coords
+
+def merge_step_geoms(x, check=True):
+    lst = [i for i in [x.step_0, x.geometry, x.step_n] if not i.is_empty]
+    if len(lst) == 0:
+        warnings.warn("All geoms are None")
+        # 存在 三者均为 empty 的情况，如 两点之间没有联通
+        return LineString([])
+    
+    # TODO 连接处会重复节点
+    coords = np.concatenate([i.coords for i in lst])
+    
+    return LineString(coords)
+
+@numba.jit
+def get_shared_arr(arr1:np.ndarray, arr2:np.ndarray):
+    lst = [arr1[0]]
+    right = 0
+    left = 1    
+    n, m = len(arr1), len(arr2)
+    
+    while left < n:
+        while right < m and np.all(arr1[left] != arr2[right]):
+            right += 1
+        if right >= m:
+            break
+        lst.append(arr1[left])
+        left += 1
+
+    if np.all(arr2[-1] != lst[-1]):
+        lst.append(arr2[-1])
+        
+    return lst
+
+def get_shared_line(line_1:np.ndarray, line_2:np.ndarray):
+    if line_1 is not None:
+        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
+        warnings.warn('line_1 is empty')
+        coords = line_2
+    elif line_2 is not None:
+        warnings.warn('line_2 is empty')
+        coords = line_1
+    else:
+        coords = get_shared_arr(line_1, line_2)
+    
+    return shapely.LineString(coords)
+
+def get_shared_linestring(line_1:shapely.LineString, line_2:shapely.LineString):
+    if line_1.is_empty:
+        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
+        warnings.warn('line_1 is empty')
+        coords = line_2
+    elif line_2.is_empty:
+        warnings.warn('line_2 is empty')
+        coords = line_1
+    else:
+        coords_1 = np.array(line_1.coords)
+        coords_2 = np.array(line_2.coords)
+        coords = get_shared_arr(coords_1, coords_2)
+    
+    return shapely.LineString(coords)
+
 # deprecated
 def _merge_steps(gt):
     # step_0 + x.geometry + step_n
@@ -49,53 +123,7 @@ def _merge_steps(gt):
     
     return gt.apply(merger, axis=1)
 
-def merge_geom_steps(x, check=True):
-    lst = [i for i in [x.step_0, x.geometry, x.step_n] if not i.is_empty]
-    if len(lst) == 0:
-        warnings.warn("All geoms are None")
-        # 存在 三者均为 empty 的情况，如 两点之间没有联通
-        return LineString([])
-    
-    # TODO 连接处会重复节点
-    coords = np.concatenate([i.coords for i in lst])
-    
-    return LineString(coords)
-
-@numba.jit
-def get_shared_arr(arr1:np.ndarray, arr2:np.ndarray):
-    lst = [arr1[0]]
-    right = 0
-    left = 1    
-    n, m = len(arr1), len(arr2)
-    
-    while left < n:
-        while right < m and np.all(arr1[left] != arr2[right]):
-            right += 1
-        if right >= m:
-            break
-        lst.append(arr1[left])
-        left += 1
-
-    if np.all(arr2[-1] != lst[-1]):
-        lst.append(arr2[-1])
-        
-    return lst
-
-def get_shared_line(line_1:shapely.LineString, line_2:shapely.LineString):
-    if line_1.is_empty:
-        # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
-        warnings.warn('line_1 is empty')
-        coords = line_2
-    elif line_2.is_empty:
-        warnings.warn('line_2 is empty')
-        coords = line_1
-    else:
-        coords_1 = np.array(line_1.coords)
-        coords_2 = np.array(line_2.coords)
-        coords = get_shared_arr(coords_1, coords_2)
-    
-    return shapely.LineString(coords)
-
+# deprecated
 def merge_coords_intervals_on_same_edge(step_0:np.ndarray, step_n:np.ndarray):
     if step_0 is None:
         # 这种情况不应发生, 因为起点的相对位置比终点的相对位置更后
@@ -110,7 +138,6 @@ def merge_coords_intervals_on_same_edge(step_0:np.ndarray, step_n:np.ndarray):
         )
     
     return coords
-
 
 if __name__ == "__main__":
     # get_shared_line

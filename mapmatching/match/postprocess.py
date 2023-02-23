@@ -4,8 +4,10 @@ from shapely.geometry import LineString
 
 from .status import STATUS
 from .misc import get_shared_line
+from ..utils.timer import timeit
 
 
+@timeit
 def get_path(rList:gpd.GeoDataFrame, 
              graph:gpd.GeoDataFrame, 
              cands:gpd.GeoDataFrame,

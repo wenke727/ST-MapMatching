@@ -5,6 +5,7 @@ import numpy as np
 from copy import deepcopy
 import pandas as pd
 import geopandas as gpd
+from shapely import LineString
 import matplotlib.pyplot as plt
 
 from .graph import GeoDigraph
@@ -26,6 +27,7 @@ from .match.geometricAnalysis import analyse_geometric_info
 from .match.viterbi import process_viterbi_pipeline, find_matched_sequence
 from .match.visualization import plot_matching_result, debug_gt_level_parallel
 
+from .utils.timer import timeit
 from .utils.logger_helper import make_logger
 from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER
@@ -48,6 +50,10 @@ class ST_Matching():
                  ll=False
                  ):
         self.net = net
+        edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'geometry']
+        self.base_edges = self.net.df_edges[edge_attrs]
+        self.base_edges.sindex
+
         self.crs_wgs = crs_wgs
         self.crs_prj = crs_prj
         self.ll = ll
@@ -63,35 +69,37 @@ class ST_Matching():
         self.route_planning_max_search_steps = max_search_steps
         self.route_planning_max_search_dist = max_search_dist
 
+    @timeit
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False, metric=None, 
                  check_duplicate=False, check_topo=False):
+        self.logger.info("\n\nstart")
         res = {'status': STATUS.UNKNOWN}
-        
-        traj = self.net.align_crs(traj)
+        traj = self.align_crs(traj)
 
         # simplify trajectory
         if simplify:
             ori_traj = traj
             traj = traj.copy()
-            traj = self._simplify(traj, tolerance=tolerance) # tolerance, 5 meters
+            traj = self.simplify(traj, tolerance=tolerance) # tolerance, 5 meters
+
         if check_duplicate:
             traj = check_duplicate_points(traj)
             
         # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
         cands = analyse_geometric_info(
-            points=traj, edges=self.net.df_edges, top_k=top_k, radius=self.cand_search_radius, ll=self.ll)
+            points=traj, edges=self.base_edges, top_k=top_k, radius=self.cand_search_radius, ll=self.ll)
         
         # is_valid
-        s, route = self._is_valid(traj, cands, res)
+        s, _ = self._is_valid(traj, cands, res)
         if not s:
             return res
 
         # spatial analysis
         res['probs'] = {}
-        rList, graph = self._spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
+        rList, graph = self.spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
         match_res, steps = get_path(rList, graph, cands, metric=res['probs'])
         if 'status' in res['probs']:
             res['status'] = res['probs']['status']
@@ -152,10 +160,7 @@ class ST_Matching():
         # Only one single point matched
         if traj.shape[0] == 1 or cands.pid.nunique() == 1: 
             eid = cands.sort_values('dist_p2c').head(1).eid.values
-            if "projection" in list(cands):
-                coord = cands.iloc[0].projection
-            else:
-                coord = cands.iloc[0]['proj_point'].coords[0]
+            coord = cands.iloc[0]['proj_point']
             res = {'epath': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
             info.update(res)
             info['status'] = STATUS.ONE_POINT
@@ -164,7 +169,8 @@ class ST_Matching():
         
         return True, None
 
-    def _spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
+    @timeit
+    def spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
         if beam_search:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
             graph_bak = graph.copy()
@@ -221,7 +227,8 @@ class ST_Matching():
         
         return traj
 
-    def _simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
+    @timeit
+    def simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
         return simplify_trajetory_points(points, tolerance, inplace=True, logger=self.logger)
 
     def matching_debug(self, traj:gpd.GeoDataFrame, graph:gpd.GeoDataFrame, level:int=None, debug_folder:str='./debug'):
@@ -281,10 +288,10 @@ class ST_Matching():
 
     def transform_res_2_path(self, res):
         path = self.net.get_edge(res['epath'], reset_index=True)
-        path.loc[0, 'geometry'] = res['step_0']
+        path.loc[0, 'geometry'] = LineString(res['step_0'])
         if 'step_n' in res:
             n = path.shape[0] - 1
-            path.loc[n, 'geometry'] = res['step_n']
+            path.loc[n, 'geometry'] = LineString(res['step_n'])
         
         path = path[~path.geometry.is_empty]
 
@@ -293,6 +300,9 @@ class ST_Matching():
     def update(self):
         return NotImplementedError
     
+    @timeit
+    def align_crs(self, traj):
+        return self.net.align_crs(traj)
 
 
 if __name__ == "__main__":

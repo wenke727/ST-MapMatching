@@ -132,7 +132,7 @@ def azimuth_cos_distance(angel_0:float, angel_1:float):
     return 1 - azimuth_cos_similarity(angel_0, angel_1)
 
 
-def cal_polyline_azimuth(geom):
+def cal_linestring_azimuth(geom):
     """caculate the azimuth of eahc line segment in a polyline.
 
     Args:
@@ -180,10 +180,12 @@ def cal_linestring_azimuth_cos_dist(geom, head_azimuth, weight=True, offset=1):
         coords = np.array(geom.coords)
     elif isinstance(geom, list):
         coords = np.array(geom)
+    elif isinstance(geom, np.ndarray):
+        coords = geom
     else:    
         assert False, print(type(geom), geom)
     
-    road_angels = cal_polyline_azimuth(coords)
+    road_angels = cal_linestring_azimuth(coords)
 
     lst = azimuth_cos_similarity(road_angels, head_azimuth)
     if offset:
@@ -224,8 +226,8 @@ if __name__ == '__main__':
 
     angels = azimuthAngle(*p0.coords[0], *p1.coords[0])
 
-    road_angels  = cal_polyline_azimuth(polyline)
-    head_azimuth = cal_polyline_azimuth(LineString([p0.coords[0], p1.coords[0]]))
+    road_angels  = cal_linestring_azimuth(polyline)
+    head_azimuth = cal_linestring_azimuth(LineString([p0.coords[0], p1.coords[0]]))
     
     cal_linestring_azimuth_cos_dist(LineString([p0.coords[0], p1.coords[0]]), head_azimuth, True)
     # head_azimuth = cal_points_azimuth([p0, p1])

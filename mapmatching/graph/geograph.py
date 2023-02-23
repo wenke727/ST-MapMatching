@@ -46,18 +46,19 @@ class GeoDigraph(Digraph):
                                     nodes_dist_memo=self.nodes_dist_memo
                                     )
 
-    def search(self, src, dst, max_steps=2000, max_dist=10000, geom=True):
+    def search(self, src, dst, max_steps=2000, max_dist=10000, coords=True):
+        # keys: status, vpath, epath, cost, geometry
         route = self.searcher.search(src, dst, max_steps, max_dist)
         
         if 'epath' not in route:
             route['epath'] = self.transform_vpath_to_epath(route['vpath'])
         
-        if geom and 'geometry' not in route:
+        if coords and 'coords' not in route:
             lst = route['epath']
             if lst is None:
-                route['geometry'] = LineString()
+                route['coords'] = None
             else:
-                route['geometry'] = self.transform_epath_to_linestring(lst)
+                route['coords'] = self.transform_epath_to_coords(lst)
         
         return route
 
@@ -131,12 +132,15 @@ class GeoDigraph(Digraph):
         return df
 
     """ transfrom """
-    def transform_epath_to_linestring(self, eids):
+    def transform_epath_to_coords(self, eids):
         steps = self.get_edge(eids, attrs=['geometry'], reset_index=True)
         coords = np.concatenate(steps.geometry.apply(lambda x: x.coords), axis=0)
         
-        return LineString(coords)           
+        return coords           
            
+    def transform_epath_to_linestring(self, eids):
+        return LineString(self.transform_epath_to_coords(eids))
+
     """ io """
     def to_postgis(self, name, nodes_attrs=['nid', 'x', 'y', 'traffic_signals', 'geometry']):
         from ..geo.io import to_postgis

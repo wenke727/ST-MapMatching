@@ -4,7 +4,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 from haversine import haversine, haversine_vector, Unit
 
-from .to_nparray import points_geoseries_2_ndarray
+from .to_array import points_geoseries_2_ndarray
 
 
 def geoseries_distance(arr1, arr2, align=True):

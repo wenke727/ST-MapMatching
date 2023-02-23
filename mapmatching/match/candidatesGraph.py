@@ -4,10 +4,11 @@ import pandas as pd
 from ..utils import timeit
 from .status import CANDS_EDGE_TYPE
 from ..geo.azimuth import cal_coords_seq_azimuth
-from ..geo.ops.to_nparray import points_geoseries_2_ndarray
 from ..geo.ops.distance import coords_seq_distance
+from ..geo.ops.to_array import points_geoseries_2_ndarray
 
-def _cal_traj_params(points, move_dir=True, check=False):
+
+def cal_traj_params(points, move_dir=True, check=False):
     coords = points_geoseries_2_ndarray(points.geometry)
     dist_arr, _ = coords_seq_distance(coords)
     idxs = points.index
@@ -29,12 +30,12 @@ def _cal_traj_params(points, move_dir=True, check=False):
 
     return res
 
-def _identify_edge_flag(gt):
+def identify_edge_flag(gt):
     # (src, dst) on the same edge
     gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
-    cond = (gt['dist'] - gt['step_0_len']) <= gt['step_n_len'] # FIXME `<` or `<=`
+    cond = (gt['dist'] - gt['step_0_len']) <= gt['step_n_len']
 
     same_edge_normal = same_edge & cond
     gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
@@ -45,6 +46,7 @@ def _identify_edge_flag(gt):
 
     return gt
 
+@timeit
 def construct_graph( points,
                      cands,
                      common_attrs=['pid', 'eid'],
@@ -63,7 +65,7 @@ def construct_graph( points,
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
 
     Parameters:
-        path = step_0 + geometry + step_n
+        path = step_0 + step_1 + step_n
 
     """
     layer_ids = np.sort(cands.pid.unique())
@@ -86,10 +88,10 @@ def construct_graph( points,
              .reset_index(drop=True)\
              .rename(columns=rename_dict)
 
-    _identify_edge_flag(gt)
+    identify_edge_flag(gt)
 
-    # There is a situation where the node does not match,             
-    traj_info = _cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
+    # There is a situation where the node does not match         
+    traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
     gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
