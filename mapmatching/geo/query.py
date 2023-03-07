@@ -4,7 +4,7 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 import warnings
 
-from .ops.linear_referencing import linear_referencing
+from .ops.linear_referencing import linear_referencing_geom
 from ..utils import timeit
 
 @timeit
@@ -82,6 +82,10 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', ra
     else:
         raise TypeError(query)
 
+
+    if query.crs != gdf.crs:
+        query = query.to_crs(gdf.crs)
+
     _query = query.copy()
     _query.index.set_names(query_id, inplace=True)
 
@@ -133,10 +137,11 @@ def _project(df_cands, project=True):
         return df_cands
 
     # assert np.all(query.geom_type == 'Point'), "Project only support `Point`"
-    df_projs = df_cands.apply(
-        lambda x: linear_referencing(x['query_geom'], x['edge_geom'], cut=True), 
-        axis=1, result_type='expand')
-    df_cands.loc[:, list(df_projs)] = df_projs.values
+    # df_projs = df_cands.apply(
+    #     lambda x: linear_referencing(x['query_geom'], x['edge_geom'], cut=True), 
+    #     axis=1, result_type='expand')
+    df_projs = linear_referencing_geom(df_cands['query_geom'], df_cands['edge_geom'])
+    df_cands.loc[:, df_projs.keys()] = df_projs.values()
     # df_cands = gpd.GeoDataFrame(df_cands, crs=gdf.crs, geometry='proj_point')
 
     return df_cands

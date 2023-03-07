@@ -66,7 +66,6 @@ def construct_graph( points,
 
     Parameters:
         path = step_0 + step_1 + step_n
-
     """
     layer_ids = np.sort(cands.pid.unique())
     prev_layer_dict = {cur: layer_ids[i]

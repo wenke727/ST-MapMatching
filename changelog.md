@@ -8,11 +8,30 @@
 - [x] 中断处理，match/viterbi.py
 - [x] 球面坐标 -> 投影坐标，一系列的变更工作
 - [x] 线形的中间过程使用 numpy, 而非 LineString
+- [x] linear referencing 矢量化操作
 - [ ] 中间过程，探讨 geom 是否有必要，减少非必要计算的开销
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
-- [ ] linear referencing 矢量化操作
 - [ ] resmaple 使用矢量算法
+- [ ] 可视化模块，投影坐标统一
+
+## [V2.0.1] - 2023-3-7
+
+
+### Added
+
+- geo
+  - linear_referencing_vector
+    - 矢量化操作，支持`（点、线）`对的操作
+  - to_array
+    - geoseries_to_coords, 使用 numba 加速 for 循环
+  - distance
+    - get_length：通过 `estimate_utm_crs` 转换到合适的投影坐标，然后计算线形的长度
+
+### Changed
+
+- geo.query.get_k_neigh_geoms
+  - 增加对齐 query 和 gdf 的操作，避免坐标不同意造成的错误
 
 ## [V2.0.0] - 2023-2-23
 

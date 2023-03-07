@@ -3,7 +3,7 @@ import geopandas as gpd
 from shapely.geometry import LineString
 
 from .status import STATUS
-from .misc import get_shared_line
+from .misc import get_shared_arr
 from ..utils.timer import timeit
 
 
@@ -36,6 +36,7 @@ def get_path(rList:gpd.GeoDataFrame,
     idxs = steps[['pid', 'eid', 'eid_1']].values[:-1].tolist()
     steps = graph.loc[idxs, ['epath', 'dist_prob', 'trans_prob']].reset_index()
 
+    # FIXME 使用 numba 加速 loop 测试
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.epath]) if x.epath else [x.eid_0]
     eids = np.concatenate(steps.apply(extract_eids, axis=1))
     eids = np.append(eids, [steps.iloc[-1].eid_1])
@@ -47,7 +48,7 @@ def get_path(rList:gpd.GeoDataFrame,
 
     # Case: one step
     if len(eids_lst) == 1:
-        tmp = get_shared_line(step_0, step_n)
+        tmp = get_shared_arr(step_0, step_n)
         res['step_0'] = tmp
         if metric.get('prob', 1) < prob_thres:
             metric['status'] = STATUS.FAILED

@@ -44,19 +44,21 @@ class ST_Matching():
                  cand_search_radius=50,
                  crs_wgs=4326,
                  crs_prj=None,
-                 prob_thres=.8, 
+                 prob_thres=.8,
                  log_folder='./log',
                  console=True,
                  ll=False
                  ):
         self.net = net
         edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'geometry']
+        # Avoid waste time on created new objects by slicing
         self.base_edges = self.net.df_edges[edge_attrs]
         self.base_edges.sindex
 
         self.crs_wgs = crs_wgs
         self.crs_prj = crs_prj
         self.ll = ll
+        
         self.debug_folder = DEBUG_FOLDER
         self.logger = make_logger(log_folder, console=console, level="INFO")
         if not os.path.exists(self.debug_folder):
@@ -75,31 +77,27 @@ class ST_Matching():
                  debug_in_levels=False, details=False, metric=None, 
                  check_duplicate=False, check_topo=False):
         self.logger.info("\n\nstart")
-        res = {'status': STATUS.UNKNOWN}
-        traj = self.align_crs(traj)
+        res = {'status': STATUS.UNKNOWN, 'crs': deepcopy(traj.crs.to_epsg())}
 
+        _traj = self.align_crs(traj.copy())
         # simplify trajectory
         if simplify:
-            ori_traj = traj
-            traj = traj.copy()
-            traj = self.simplify(traj, tolerance=tolerance) # tolerance, 5 meters
-
-        if check_duplicate:
-            traj = check_duplicate_points(traj)
+            _traj = self.simplify(_traj, tolerance=tolerance) # tolerance, 5 meters
+        elif check_duplicate:
+            _traj = check_duplicate_points(_traj)
             
         # geometric analysis
         top_k = top_k if top_k is not None else self.top_k_candidates
-        cands = analyse_geometric_info(
-            points=traj, edges=self.base_edges, top_k=top_k, radius=self.cand_search_radius, ll=self.ll)
+        cands = analyse_geometric_info(_traj, self.base_edges, top_k, self.cand_search_radius)
         
         # is_valid
-        s, _ = self._is_valid(traj, cands, res)
+        s, _ = self._is_valid_cands(_traj, cands, res)
         if not s:
             return res
 
         # spatial analysis
         res['probs'] = {}
-        rList, graph = self.spatial_analysis(traj, cands, dir_trans, beam_search, metric=res['probs'])
+        rList, graph = self.spatial_analysis(_traj, cands, dir_trans, beam_search, metric=res['probs'])
         match_res, steps = get_path(rList, graph, cands, metric=res['probs'])
         if 'status' in res['probs']:
             res['status'] = res['probs']['status']
@@ -115,7 +113,7 @@ class ST_Matching():
             # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
             attrs = [i for i in attrs if i in list(graph)]
             _dict = {
-                "simplified_traj": traj,
+                "simplified_traj": _traj,
                 'cands': cands, 
                 'rList': rList, 
                 "steps": steps, 
@@ -125,33 +123,33 @@ class ST_Matching():
             res['details'] = _dict
 
         if metric is not None:
-            res['metric'] = self.eval(traj, res, metric=metric)
+            res['metric'] = self.eval(_traj, res, metric=metric)
             print(f"{metric}: {res['metric']}")
 
         if plot or save_fn:
-            fig, ax = self.plot_result(traj, res)
+            fig, ax = self.plot_result(_traj, res)
             if simplify:
-                ori_traj.plot(ax=ax, color='gray', alpha=.5)
-                traj.plot(ax=ax, color='yellow', alpha=.5)
+                traj.plot(ax=ax, color='gray', alpha=.5)
+                _traj.plot(ax=ax, color='yellow', alpha=.5)
             if not plot:
                plt.close()
             if save_fn:
                 fig.savefig(save_fn, dpi=300, bbox_inches='tight', pad_inches=0.02)
 
         if debug_in_levels:
-            self.matching_debug(traj, graph)
+            self.matching_debug(_traj, graph)
         
         if check_topo:
             # FIXME 重复操作，直接返回结果即可
             flag = check_steps(self, res, prob_thred=.75, factor=1.2)
             if flag:
-                res = self.matching(traj, top_k, dir_trans, beam_search,
+                res = self.matching(_traj, top_k, dir_trans, beam_search,
                  False, tolerance, plot, save_fn, debug_in_levels, details, metric, 
                  check_duplicate, False)
 
         return res
 
-    def _is_valid(self, traj, cands, info, eps = 1e-7):
+    def _is_valid_cands(self, traj, cands, info, eps = 1e-7):
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
@@ -173,7 +171,6 @@ class ST_Matching():
     def spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
         if beam_search:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
-            graph_bak = graph.copy()
             prob, rList, graph = find_matched_sequence(cands, graph, self.net, dir_trans)
         else:
             graph = analyse_spatial_info(self.net, traj, cands, dir_trans)
@@ -187,12 +184,16 @@ class ST_Matching():
         """
         lcss 的 dp 数组 循环部分，使用numba 加速，这个环节可以降低 10% 的时间消耗（20 ms） 
         """
+        # FIXME ll
         assert res is not None or path is not None
         assert metric in ['lcss', 'edr', 'erp']
         
         if path is None:
             path = self.transform_res_2_path(res)
-        
+
+        if traj.crs.to_epsg() != path.crs.to_epsg():
+            traj = traj.to_crs(path.crs.to_epsg())
+
         if resample:
             _, path_coords_np = resample_polyline_seq_to_point_seq(path.geometry, step=resample,)
             _, traj_coords_np = resample_point_seq(traj.geometry, step=resample)
@@ -210,7 +211,7 @@ class ST_Matching():
         return _eval[0](*_eval[1])
 
     def project(self, points, path, keep_attrs=['eid', 'geometry'], normalized=True, reset_geom=True):
-        ps = project_points_2_linestrings(points, path, normalized=normalized, keep_attrs=keep_attrs)
+        ps = project_points_2_linestrings(points, path, normalized = normalized, keep_attrs = keep_attrs)
 
         ps = gpd.GeoDataFrame(pd.concat([points, ps], axis=1))
         if reset_geom:
@@ -258,9 +259,9 @@ class ST_Matching():
         if info['status'] == 3:
             path = None
         else:
-            path = self.transform_res_2_path(info)
+            path = self.transform_res_2_path(info, ori_crs=False)
 
-        fig, ax = plot_matching_result(traj, path, self.net)
+        fig, ax = plot_matching_result(self.align_crs(traj.copy()), path, self.net)
         if not info:
             return fig, ax
 
@@ -286,7 +287,7 @@ class ST_Matching():
 
         return fig, ax
 
-    def transform_res_2_path(self, res):
+    def transform_res_2_path(self, res, ori_crs=False):
         path = self.net.get_edge(res['epath'], reset_index=True)
         path.loc[0, 'geometry'] = LineString(res['step_0'])
         if 'step_n' in res:
@@ -294,6 +295,8 @@ class ST_Matching():
             path.loc[n, 'geometry'] = LineString(res['step_n'])
         
         path = path[~path.geometry.is_empty]
+        if ori_crs:
+            path = path.to_crs(res['crs'])
 
         return path
 

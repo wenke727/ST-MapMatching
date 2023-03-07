@@ -7,6 +7,10 @@ from haversine import haversine, haversine_vector, Unit
 from .to_array import points_geoseries_2_ndarray
 
 
+def get_length(geoms):
+    crs = geoms.estimate_utm_crs()
+    return geoms.to_crs(crs).length
+
 def geoseries_distance(arr1, arr2, align=True):
     """calculate two geoseries distance
 

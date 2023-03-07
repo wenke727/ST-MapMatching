@@ -73,10 +73,3 @@ def get_trans_prob_bet_layers(gt, net, dir_trans=True, geometry='path'):
     cal_trans_prob(gt, geometry, dir_trans)
     
     return gt
-
-
-if __name__ == "__main__":
-    geograph, points, cands = _load_test_data()
-    gt = analyse_spatial_info(geograph, points, cands, True)
-    
-    

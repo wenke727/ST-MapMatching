@@ -24,5 +24,7 @@ traj = matcher.load_points(f"./data/trajs/traj_{idx}.geojson").reset_index(drop=
 res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, 
                        details=True, simplify=True, debug_in_levels=False)
 
+matcher.transform_res_2_path(res)
+
 """step 4: eval"""
 matcher.eval(traj, res, resample=5, eps=10)
