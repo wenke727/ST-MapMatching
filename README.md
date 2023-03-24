@@ -24,15 +24,34 @@ V2.0.0
 from mapmatching import build_geograph, ST_Matching
 
 """step 1: 获取/加载路网"""
+# 通过bbox获取路网数据, 通过 xml_fn 指定存储位置
 net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
-                     xml_fn="./data/network/LXD.osm.xml")
+                     xml_fn="./data/network/LXD.osm.xml", ll=False)
+
+# 通过读取 xml，处理后获得路网数据
+# net = build_geograph(xml_fn="./data/network/LXD.osm.xml")
+# 将预处理路网保存为 ckpt
+# net.save_checkpoint('./data/network/LXD_graph.ckpt')
+
+# 加载 ckpt
+# net = build_geograph(ckpt='./data/network/LXD_graph.ckpt', ll=False)
 
 """step 2: 创建地图匹配 matcher"""
-matcher = ST_Matching(net=net)
+matcher = ST_Matching(net=net, ll=False)
 
 """step 3: 加载轨迹点集合，以打石一路为例"""
-traj = matcher.load_points("./data/trajs/traj_4.geojson")
-path, info = matcher.matching(traj, plot=True, top_k=5)
+idx = 4
+traj = matcher.load_points(f"./data/trajs/traj_{idx}.geojson").reset_index(drop=True)
+res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, 
+                       details=False, simplify=True, debug_in_levels=False)
+
+# 后续步骤可按需选择
+"""step 4: 将轨迹点映射到匹配道路上"""
+path = matcher.transform_res_2_path(res)
+proj_traj = matcher.project(traj, path)
+
+"""step 5: eval"""
+matcher.eval(traj, res, resample=5, eps=10)
 ```
 
 ### 输入示例
@@ -64,17 +83,24 @@ path, info = matcher.matching(traj, plot=True, top_k=5)
 
 ### 输出示例
 
-```json
-{'status': 99,
- 'probs': {'prob': 0.07239983608324635,
-  'norm_prob': 0.7690839679357104,
-  'dist_prob': 0.886956440947009,
-  'trans_prob': 0.8333451587857633,
-  'dir_prob': 0.9395559018614211,
-  'status': 0},
- 'epath': [8951,   1403,   1404,   1405,   1406,   1407,   1484,   1482, 1483,   1466, 118095, 118096,   1467,   1468,   1469,   1470, 1471,   1472,   1473,   1474, 117158, 122957, 122958, 117450, 117451, 117452, 117453, 122849, 122850, 117121, 117122,  96813, 96814,  96815,  96816,  96817,  96789, 122869,    771,  23786, 23808, 122874, 117741, 117742, 117743, 123309, 123310, 123311, 123312, 123313, 123314, 123315, 123316, 123317, 123318,   1536, 76069,   1537, 117105,    650,    651,    652,    653,    654, 655,    656,    657,    658, 124425, 124426, 124427, 124428, 118053, 118054,   1582,   1581,   1580,   1420,    531,   1645,  139265],
- 'step_0': [[114.0421798,  22.5309295], [114.0425387,  22.530972 ]],
- 'step_n': [[114.0630578,  22.5293481], [114.0630362,  22.5293596], [114.0628913,  22.5293602]])}
+```python
+{
+  #  输出状态码，0 为正常输出
+  'status': 0, 
+  # 匹配路段 index
+  'epath': [123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135], 
+  # 第一条路被通过的比例(即第一条路上, 第一个轨迹点及之后的部分的占比)
+  'step_0': 0.7286440473726905, 
+  # 最后一条路被通过的比例(即最后一条路上, 最后一个轨迹点及之前的部分的占比）
+  'step_n': 0.8915310605450645，
+	# 概率
+  'probs': {
+    	'prob': 0.9457396931471692, 
+      'norm_prob': 0.9861498301181256,
+      'dist_prob': 0.9946361835772438,
+      'trans_prob': 0.9880031610906268,
+      'dir_prob': 0.9933312073337599}
+ }
 ```
 
 可视化效果如下
@@ -95,4 +121,4 @@ conda install -c conda-forge geopandas==0.12.1
 
 - batched compression algorithm
   - [轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
-  - [基于MapReduce的轨迹压缩并行化方法](http://www.xml-data.org/JSJYY/2017-5-1282.htm)
+  - [基于MapReduce的轨迹压缩并行化方法](

@@ -85,7 +85,7 @@ def pipeline_for_df_test(df_tuple, bias=-2, verbose=True):
 
 
 if __name__ == "__main__":
-    parallel_process(_add, ((i, i) for i in range(10000)), True)
+    res = parallel_process(_add, ((i, i) for i in range(10000)), True)
 
     # 基于 DataFrame 的多进程版本示例
     import pandas as pd

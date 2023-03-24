@@ -83,9 +83,11 @@ def get_path(rList:gpd.GeoDataFrame,
 
 def _get_first_and_step_n(cands, rList):
     step_0 = cands.query(
-        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').seg_1.values[0]
+        f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').iloc[0]
     step_n = cands.query(
-        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').seg_0.values[0]
+        f'pid == {rList.iloc[-1].pid} and eid == {rList.iloc[-1].eid}').iloc[0]
 
-    return step_0, step_n
+    cal_offset = lambda x: x['len_0'] / (x['len_0'] + x['len_1'])
+
+    return cal_offset(step_0), cal_offset(step_n)
 

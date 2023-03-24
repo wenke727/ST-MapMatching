@@ -5,6 +5,7 @@ import numpy as np
 from copy import deepcopy
 import pandas as pd
 import geopandas as gpd
+import shapely
 from shapely import LineString
 import matplotlib.pyplot as plt
 
@@ -210,10 +211,16 @@ class ST_Matching():
 
         return _eval[0](*_eval[1])
 
-    def project(self, points, path, keep_attrs=['eid', 'geometry'], normalized=True, reset_geom=True):
-        ps = project_points_2_linestrings(points, path, normalized = normalized, keep_attrs = keep_attrs)
+    def project(self, points, path, keep_attrs=['eid', 'proj_point'], normalized=True, reset_geom=True):
+        _points = points[[points.geometry.name]]
+        ps = project_points_2_linestrings(
+            _points, 
+            path.to_crs(points.crs), 
+            normalized = normalized)
+        if keep_attrs:
+            ps = ps[keep_attrs]
 
-        ps = gpd.GeoDataFrame(pd.concat([points, ps], axis=1))
+        ps = gpd.GeoDataFrame(pd.concat([_points, ps], axis=1))
         if reset_geom:
             ps.loc[:, 'ori_geom'] = points.geometry.apply(lambda x: x.wkt)
             ps.set_geometry('proj_point', inplace=True)
@@ -289,10 +296,14 @@ class ST_Matching():
 
     def transform_res_2_path(self, res, ori_crs=False):
         path = self.net.get_edge(res['epath'], reset_index=True)
-        path.loc[0, 'geometry'] = LineString(res['step_0'])
-        if 'step_n' in res:
-            n = path.shape[0] - 1
-            path.loc[n, 'geometry'] = LineString(res['step_n'])
+        if len(res['epath']) == 1:
+            path.loc[0, 'geometry'] = shapely.ops.substring(
+                path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
+        else:
+            path.loc[0, 'geometry'] = shapely.ops.substring(
+                path.iloc[0].geometry, res['step_0'], 1, normalized=True)
+            path.loc[-1, 'geometry'] = shapely.ops.substring(
+                path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
         
         path = path[~path.geometry.is_empty]
         if ori_crs:

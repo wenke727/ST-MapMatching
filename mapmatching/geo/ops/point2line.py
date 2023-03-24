@@ -131,11 +131,11 @@ def project_points_2_linestrings(points:GeoDataFrame, lines:GeoDataFrame,
     proj_df.loc[:, 'point_geom'] = points.geometry
     proj_df.loc[:, att_lst] = proj_df.apply(
         lambda x: project_point_2_linestring(
-            x.point_geom, x.edge_geom, normalized, precision), 
+            x.point_geom, x.edge_geom, normalized), 
         axis=1, result_type='expand'
     ).values
 
-    proj_df.loc[:, 'dist_p2c'] = geoseries_distance(proj_df['query_geom'], proj_df['proj_point'])
+    proj_df.loc[:, 'dist_p2c'] = geoseries_distance(proj_df['point_geom'], proj_df['proj_point'])
 
     if drop_ori_geom:
         proj_df.drop(columns=['point_geom', 'edge_geom'], inplace=True)

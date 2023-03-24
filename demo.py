@@ -22,9 +22,12 @@ matcher = ST_Matching(net=net, ll=False)
 idx = 4
 traj = matcher.load_points(f"./data/trajs/traj_{idx}.geojson").reset_index(drop=True)
 res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, 
-                       details=True, simplify=True, debug_in_levels=False)
+                       details=False, simplify=True, debug_in_levels=False)
 
-matcher.transform_res_2_path(res)
+# 后续步骤可按需选择
+"""step 4: 将轨迹点映射到匹配道路上"""
+path = matcher.transform_res_2_path(res)
+proj_traj = matcher.project(traj, path)
 
-"""step 4: eval"""
+"""step 5: eval"""
 matcher.eval(traj, res, resample=5, eps=10)

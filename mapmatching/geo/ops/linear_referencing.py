@@ -201,6 +201,7 @@ def linear_referencing_vector(points:np.array, lines:np.array, cut=True, eps=1e-
     if not cut:
         res['offset'] = offset
     else:
+        # TODO normalized = True
         tmp = numba_cut_lines(col_idxs, cp, r, lines)
         seg_0, seg_1 = list(zip(*tmp))
         res['seg_0'] = seg_0
