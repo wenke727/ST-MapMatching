@@ -24,17 +24,16 @@ V2.0.0
 from mapmatching import build_geograph, ST_Matching
 
 """step 1: 获取/加载路网"""
-# 通过bbox获取路网数据, 通过 xml_fn 指定存储位置
-net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
-                     xml_fn="./data/network/LXD.osm.xml", ll=False)
-
-# 通过读取 xml，处理后获得路网数据
-# net = build_geograph(xml_fn="./data/network/LXD.osm.xml")
+# 方法1：
+# 根据 bbox 从 OSM 下载路网，从头解析获得路网数据
+# net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
+#                      xml_fn="./data/network/LXD.osm.xml", ll=False)
 # 将预处理路网保存为 ckpt
 # net.save_checkpoint('./data/network/LXD_graph.ckpt')
 
-# 加载 ckpt
-# net = build_geograph(ckpt='./data/network/LXD_graph.ckpt', ll=False)
+# 方法2：
+# 使用预处理路网 
+net = build_geograph(ckpt='./data/network/LXD_graph.ckpt')
 
 """step 2: 创建地图匹配 matcher"""
 matcher = ST_Matching(net=net, ll=False)
