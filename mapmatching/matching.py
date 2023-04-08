@@ -1,12 +1,9 @@
 import os
-# 当 shapley 版本低于 2.0 版本时，可取消以下注释，使用时量化操作加速；
-# os.environ["USE_PYGEOS"] = "0" 
-
+import shapely
 import numpy as np
-from copy import deepcopy
 import pandas as pd
 import geopandas as gpd
-import shapely
+from copy import deepcopy
 import matplotlib.pyplot as plt
 
 from .graph import GeoDigraph

@@ -120,10 +120,9 @@ matcher.eval(traj, res, resample=5, eps=10)
 详见 requirement.txt, 建议`geopandas`使用conda安装
 
 ```bash
-conda create -n geo python=3.9
+conda create -n stmm python=3.9
 conda activate stmm
 conda install -c conda-forge geopandas==0.12.2
 pip install -r requirement.txt
-
 ```
 
