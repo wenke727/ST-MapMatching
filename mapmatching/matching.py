@@ -1,12 +1,12 @@
 import os
-# os.environ["USE_PYGEOS"] = "0"
+# 当 shapley 版本低于 2.0 版本时，可取消以下注释，使用时量化操作加速；
+# os.environ["USE_PYGEOS"] = "0" 
 
 import numpy as np
 from copy import deepcopy
 import pandas as pd
 import geopandas as gpd
 import shapely
-from shapely import LineString
 import matplotlib.pyplot as plt
 
 from .graph import GeoDigraph
@@ -32,8 +32,6 @@ from .utils.timer import timeit
 from .utils.logger_helper import make_logger
 from .utils.misc import SET_PANDAS_LOG_FORMET
 from .setting import DATA_FOLDER, DEBUG_FOLDER
-
-SET_PANDAS_LOG_FORMET()
 
 
 class ST_Matching():
@@ -294,15 +292,18 @@ class ST_Matching():
 
         return fig, ax
 
-    def transform_res_2_path(self, res, ori_crs=False):
+    def transform_res_2_path(self, res, ori_crs=True):
         path = self.net.get_edge(res['epath'], reset_index=True)
-        if len(res['epath']) == 1:
+        _len = len(res['epath']) 
+        
+        # TODO: modify `dist`
+        if _len == 1:
             path.loc[0, 'geometry'] = shapely.ops.substring(
                 path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
         else:
             path.loc[0, 'geometry'] = shapely.ops.substring(
                 path.iloc[0].geometry, res['step_0'], 1, normalized=True)
-            path.loc[-1, 'geometry'] = shapely.ops.substring(
+            path.loc[_len - 1, 'geometry'] = shapely.ops.substring(
                 path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
         
         path = path[~path.geometry.is_empty]

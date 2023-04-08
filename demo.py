@@ -10,7 +10,7 @@ from mapmatching import build_geograph, ST_Matching
 
 # 方法2：
 # 使用预处理路网 
-net = build_geograph(ckpt='./data/network/LXD_graph.ckpt')
+net = build_geograph(ckpt='./data/network/LXD_graph.ckpt') 
 
 """step 2: 创建地图匹配 matcher"""
 matcher = ST_Matching(net=net, ll=False)
@@ -18,12 +18,12 @@ matcher = ST_Matching(net=net, ll=False)
 """step 3: 加载轨迹点集合，以打石一路为例"""
 idx = 4
 traj = matcher.load_points(f"./data/trajs/traj_{idx}.geojson").reset_index(drop=True)
-res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, 
-                       details=False, simplify=True, debug_in_levels=False)
+res = matcher.matching(traj, top_k=5, dir_trans=True, details=False, plot=True,
+                       simplify=True, debug_in_levels=False)
 
 # 后续步骤可按需选择
 """step 4: 将轨迹点映射到匹配道路上"""
-path = matcher.transform_res_2_path(res)
+path = matcher.transform_res_2_path(res, ori_crs=True)
 proj_traj = matcher.project(traj, path)
 
 """step 5: eval"""

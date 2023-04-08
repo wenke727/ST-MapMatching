@@ -54,8 +54,11 @@ def edge_offset(df_edges):
     # df_edge.loc[:, 'geom_origin'] = df_edge.geometry.apply(lambda x: x.to_wkt())
     geom_offset = _df_edges.apply( lambda x: parallel_offset_edge(x), axis=1 )
     _df_edges.loc[geom_offset.index, 'geometry'] = geom_offset
+    
+    df_edges = pd.concat([df_edges.query("way_id not in @way_ids"), _df_edges])
+    
 
-    return df_edges.query("way_id not in @way_ids").append(_df_edges)
+    return df_edges
 
 
 def parallel_offset_edge(record:pd.Series, distance=1.25/110/1000, process_two_point=True, keep_endpoint_pos=True, logger=None):

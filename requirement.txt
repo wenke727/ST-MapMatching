@@ -1,5 +1,12 @@
-geopandas==0.12.1
-pygeos==0.13
+geopandas==0.12.2
+pandas==1.5.3
+shapely==2.0.1
 sqlalchemy==1.4.46
 psycopg2==2.9.5
-geoalchemy2 ==0.13.0
+geoalchemy2==0.13.1
+matplotlib==3.6.3
+loguru==0.6.0
+haversine==2.8.0
+numba==0.56.4
+osmium==3.6.0
+tqdm

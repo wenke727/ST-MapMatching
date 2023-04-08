@@ -220,7 +220,6 @@ def append_way_info(df_edges, df_ways, way_attrs=None):
     
     return df_edges
 
-@timeit
 def _parse_xml(fn, highway_filters, crs="epsg:4326", in_sys='wgs', out_sys='wgs'):
     # ways
     timer = Timer()
@@ -264,7 +263,6 @@ def _transform_coords_seq_2_linstring(waypoints, df_nodes):
     
     return geoms
 
-@timeit
 def _parrallel_collect_geoms(df, df_nodes, n_jobs=16):
     _size = df.shape[0] // n_jobs + 1
     df.loc[:, 'part'] = df.index // _size
@@ -279,7 +277,6 @@ def _parrallel_collect_geoms(df, df_nodes, n_jobs=16):
 
     return geoms
 
-@timeit
 def _simplify_edges(df_edges, df_nodes, n_jobs):
     ori_df_edges = df_edges.copy()
     signal_control_points = df_nodes[~df_nodes.ctrl_type.isna()].index.unique()
@@ -288,7 +285,6 @@ def _simplify_edges(df_edges, df_nodes, n_jobs):
 
     return _edges
 
-@timeit
 def _add_revert_edges(df_edges, df_ways):
     _size = df_edges.shape[0]
     df_edges = add_reverse_edge(df_edges, df_ways, offset=False)
@@ -296,7 +292,6 @@ def _add_revert_edges(df_edges, df_ways):
 
     return df_edges
 
-@timeit
 def _process_multi_edges(df_edges, ori_df_edges, df_ways):
     if "level" not in list(df_edges):
         df_edges = df_edges.merge(df_ways[['level']], left_on='way_id', right_index=True, how='left')
@@ -343,7 +338,7 @@ def _process_multi_edges(df_edges, ori_df_edges, df_ways):
         _multi_edges = None
 
     # case 3: 针对 waypoints 仅有两条记录的情况
-    ps = multi_edges.loc[case2_drop_idxs].waypoints
+    ps = multi_edges.loc[list(case2_drop_idxs)].waypoints
     tmp = df_edges.loc[ps[ps.apply(len) == 2].index]
     assert tmp.shape[0] == 0
 

@@ -14,7 +14,7 @@ V2.0.0
 
 输入WGS坐标系的`GPS轨迹点集`，输出途径的路段；
 
-本算法为 MSRA《[Map-Matching for Low-Sampling-Rate GPS Trajectories](https://www.microsoft.com/en-us/research/publication/map-matching-for-low-sampling-rate-gps-trajectories/)》的复现，中文解读可参考 [CSDN文章](https://blog.csdn.net/qq_43281895/article/details/103145327)。
+本算法为 MSRA《[Map-Matching for Low-Sampling-Rate GPS Trajectories](https://www.microsoft.com/en-us/research/publication/map-matching-for-low-sampling-rate-gps-trajectories/)》的复现，并根据自己的认识有一些改动，中文解读可参考 [CSDN文章](https://blog.csdn.net/qq_43281895/article/details/103145327)。
 
 ## 调用说明
 
@@ -41,12 +41,12 @@ matcher = ST_Matching(net=net, ll=False)
 """step 3: 加载轨迹点集合，以打石一路为例"""
 idx = 4
 traj = matcher.load_points(f"./data/trajs/traj_{idx}.geojson").reset_index(drop=True)
-res = matcher.matching(traj, plot=True, top_k=5, dir_trans=True, 
-                       details=False, simplify=True, debug_in_levels=False)
+res = matcher.matching(traj, top_k=5, dir_trans=True, details=False, plot=True,
+                       simplify=True, debug_in_levels=False)
 
 # 后续步骤可按需选择
 """step 4: 将轨迹点映射到匹配道路上"""
-path = matcher.transform_res_2_path(res)
+path = matcher.transform_res_2_path(res, ori_crs=True)
 proj_traj = matcher.project(traj, path)
 
 """step 5: eval"""
@@ -56,31 +56,30 @@ matcher.eval(traj, res, resample=5, eps=10)
 ### 输入示例
 
 ```json
-{"type": "FeatureCollection",
-"name": "trips",
+{
+"type": "FeatureCollection",
+"name": "traj_debug_dashiyilu_0",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
-{ "type": "Feature", "properties": { "id": 0 }, "geometry": { "type": "Point", "coordinates": [ 114.042192099217814, 22.530825799254831 ] } },
-{ "type": "Feature", "properties": { "id": 1 }, "geometry": { "type": "Point", "coordinates": [ 114.048087551857591, 22.53141414915628 ] } },
-{ "type": "Feature", "properties": { "id": 2}, "geometry": { "type": "Point", "coordinates": [ 114.050457097022772, 22.530254493344991 ] } },
-{ "type": "Feature", "properties": { "id": 3}, "geometry": { "type": "Point", "coordinates": [ 114.051374300525396, 22.534269663922935 ] } },
-{ "type": "Feature", "properties": { "id": 4}, "geometry": { "type": "Point", "coordinates": [ 114.050237176637481, 22.537490331019249 ] } },
-{ "type": "Feature", "properties": { "id": 5}, "geometry": { "type": "Point", "coordinates": [ 114.045217471559866, 22.54216729753638 ] } },
-{ "type": "Feature", "properties": { "id": 6}, "geometry": { "type": "Point", "coordinates": [ 114.050182240637483, 22.542416259019245 ] } },
-{ "type": "Feature", "properties": { "id": 7}, "geometry": { "type": "Point", "coordinates": [ 114.056957680637467, 22.542526131019244 ] } },
-{ "type": "Feature", "properties": { "id": 8}, "geometry": { "type": "Point", "coordinates": [ 114.058074914718418, 22.537513356219687 ] } },
-{ "type": "Feature", "properties": { "id": 9}, "geometry": { "type": "Point", "coordinates": [ 114.058331080637473, 22.531227627019256 ] } },
-{ "type": "Feature", "properties": { "id": 10}, "geometry": { "type": "Point", "coordinates": [ 114.062890768637473, 22.529213307019258 ] } }
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.931956598012064, 22.575930582940785 ] } }},
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.932515057750763, 22.575632036146079 ] } }},
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.932920306714124, 22.575490522559665 ] } }},
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.933781789624888, 22.575346314537452 ] } }},
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.943190113338488, 22.575121559997108 ] } }},
+{ "type": "Feature", "properties": {"geometry": { "type": "Point", "coordinates": [ 113.943816093693101, 22.575196482404341 ] } }}
 ]
 }
+
 ```
 
 注:
 
-1. 示例输入对应`./data/trajs/traj_0.geojson`，在`vscode`中可借助插件`Geo Data Viewer`可视化;
-2. 输入轨迹点的坐标系默认为 wgs84, gcj02的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`,
+1. 示例输入对应`./data/trajs/traj_0.geojson`，其中 `geometry` 为唯一需要提供的字段，在`vscode`中可借助插件`Geo Data Viewer`可视化;
+2. 输入轨迹点的坐标系默认为 `wgs84`, `gcj02` 的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`,
 
 ### 输出示例
+
+#### demo 输出
 
 ```python
 {
@@ -92,9 +91,9 @@ matcher.eval(traj, res, resample=5, eps=10)
   'step_0': 0.7286440473726905, 
   # 最后一条路被通过的比例(即最后一条路上, 最后一个轨迹点及之前的部分的占比）
   'step_n': 0.8915310605450645，
-	# 概率
+  # 概率
   'probs': {
-    	'prob': 0.9457396931471692, 
+      'prob': 0.9457396931471692, 
       'norm_prob': 0.9861498301181256,
       'dist_prob': 0.9946361835772438,
       'trans_prob': 0.9880031610906268,
@@ -102,7 +101,17 @@ matcher.eval(traj, res, resample=5, eps=10)
  }
 ```
 
-可视化效果如下
+可视化效果如下:
+  
+![](.fig/demo.png)
+
+ - matcher.matching 将 plot 参数设置为 True
+ - 瓦片地图，需要安装 [Tilemap](https://github.com/wenke727/TileMap)
+
+#### 其他地图匹配效果
+
+`./data/trajs/traj_0.geojson` 匹配效果
+
 
 ![](.fig/map_matching_futian.png)
 
@@ -111,13 +120,10 @@ matcher.eval(traj, res, resample=5, eps=10)
 详见 requirement.txt, 建议`geopandas`使用conda安装
 
 ```bash
-conda create -n geo python=3.7
-conda activate geo
-conda install -c conda-forge geopandas==0.12.1
+conda create -n geo python=3.9
+conda activate stmm
+conda install -c conda-forge geopandas==0.12.2
+pip install -r requirement.txt
+
 ```
 
-## Ref
-
-- batched compression algorithm
-  - [轨迹数据压缩的Douglas-Peucker算法](https://zhuanlan.zhihu.com/p/136286488)
-  - [基于MapReduce的轨迹压缩并行化方法](
