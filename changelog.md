@@ -9,12 +9,32 @@
 - [x] 球面坐标 -> 投影坐标，一系列的变更工作
 - [x] 线形的中间过程使用 numpy, 而非 LineString
 - [x] linear referencing 矢量化操作
-- [ ] 控制多进程，支撑在windows下运行
+- [x] 可视化模块，投影坐标统一
+- [ ] 控制多进程，支撑在windows下运行 :star:
 - [ ] 中间过程，探讨 geom 是否有必要，减少非必要计算的开销
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 - [ ] resmaple 使用矢量算法
-- [ ] 可视化模块，投影坐标统一
+- [ ] `GeoGraph` aligned to `networkx` :star:
+
+## [V2.0.5] - 2023-4-14
+
+### Added
+
+- mapmatching/graph/geograph.py
+  - 新增 `add_edge_map` 函数，将原来的可视化程序解耦
+
+### Changed
+
+- 修复一些 Bugs
+
+  - ST_Matching.matching 中 绘图所使用的GeoDataFrame 存在没有初始化 crs
+
+    让本来经纬度坐标的直接绘制在投影坐标的图上，导致图的比例尺特别大
+
+  - candidatesGraph L97 数值溢出问题
+
+  - mapmatching/osmnet/twoway_edge.swap_od 空 dataframe 的处理
 
 ## [V2.0.4] - 2023-4-9
 

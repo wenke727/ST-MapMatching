@@ -2,8 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame
-from shapely.geometry import LineString
+from shapely.geometry import LineString, box
 # from networkx.classes import DiGraph
 
 from .base import Digraph
@@ -309,7 +310,24 @@ class GeoDigraph(Digraph):
     def epsg(self):
         return self.df_edges.crs.to_epsg()
 
-    
+    def add_edge_map(self, ax, crs=4326, *args, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        x0, x1, y0, y1 = ax.axis()
+        zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})
+
+        if crs == 4326:
+            if not hasattr(self, "df_edges_ll"):
+                self.df_edges_ll = self.df_edges.to_crs(self.crs_wgs)
+            df_edges = self.df_edges_ll
+        else:
+            df_edges = self.df_edges
+        df_edges = df_edges.sjoin(zones, how="inner", predicate='intersects')
+        df_edges.plot(ax=ax, *args, **kwargs)
+
+        return ax
+
 if __name__ == "__main__":
     network = GeoDigraph()
     network.load_checkpoint(ckpt='./cache/Shenzhen_graph_9.ckpt')

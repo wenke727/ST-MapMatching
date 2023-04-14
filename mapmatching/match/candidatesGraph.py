@@ -93,7 +93,8 @@ def construct_graph( points,
     traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
-    gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
+    # gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
+    gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(np.int64)
     if gt_keys:
         gt.set_index(gt_keys, inplace=True)
     

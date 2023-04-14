@@ -5,7 +5,10 @@ from loguru import logger
 from shapely.geometry import LineString
 
 
-def swap_od(df_edge_rev, od_attrs=['src', 'dst']):
+def swap_od(df_edge_rev:pd.DataFrame, od_attrs=['src', 'dst']):
+    if df_edge_rev.empty:
+        return df_edge_rev
+    
     df_edge_rev.loc[:, 'dir']       = -1
     df_edge_rev.loc[:, 'order']     = -df_edge_rev.order - 1
     df_edge_rev.loc[:, 'waypoints'] = df_edge_rev.waypoints.apply(lambda x: x[::-1])

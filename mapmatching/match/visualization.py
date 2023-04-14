@@ -8,9 +8,10 @@ from PIL import Image
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import box
+
 from ..utils.parallel_helper import parallel_process
 from ..utils.img import merge_np_imgs
-
+from ..graph import GeoDigraph
 from ..geo.vis import plot_geodata, TILEMAP_FLAG, add_basemap
 
 def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=None, legend=True, factor=4):
@@ -201,19 +202,22 @@ def _base_plot(df, column=None, categorical=True):
     
     return ax
 
-def plot_matching_result(traj_points, path, net, column=None, categorical=True):
+def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, net: GeoDigraph, 
+                         column=None, categorical=True):
+    traj_crs = traj_points.crs.to_epsg()
+    if traj_crs != path.crs.to_epsg():
+        path = path.to_crs(traj_crs)
+
     _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
     fig, ax = plot_geodata(_df, figsize=(18, 12), tile_alpha=.7, reset_extent=False, alpha=0)
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
     if path is not None:
-        path.plot(ax=ax, color='r', label='Matched Path', zorder=3, linewidth=2, alpha=.6)
+        path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
 
-    x0, x1, y0, y1 = ax.axis()
-    zones = gpd.GeoDataFrame({'geometry': [box(x0, y0, x1, y1)]})
-    net.df_edges.sjoin(zones, how="inner", predicate='intersects')\
-                .plot(ax=ax, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
+    ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
+
     ax.legend(loc=1)
 
     return fig, ax

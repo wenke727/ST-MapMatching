@@ -72,8 +72,8 @@ class ST_Matching():
                  simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False, metric=None, 
                  check_duplicate=False, check_topo=False):
-        self.logger.info("\n\nstart")
-        res = {'status': STATUS.UNKNOWN, 'crs': deepcopy(traj.crs.to_epsg())}
+        self.logger.trace("start")
+        res = {'status': STATUS.UNKNOWN, 'ori_crs': deepcopy(traj.crs.to_epsg())}
 
         _traj = self.align_crs(traj.copy())
         # simplify trajectory
@@ -101,13 +101,13 @@ class ST_Matching():
         res.update(match_res)
 
         if details or check_topo:
-            attrs = ['pid_1', 'step_0_len', 'step_n_len', 'cost', 'd_sht', 'd_euc', 'dist_prob', 'trans_prob', 'observ_prob', 'prob', 
-                     'flag', 'status', 'dst', 'src','step_0', 'geometry', 'step_n', 'path', 'epath', 'vpath','dist']
+            attrs = ['pid_1', 'step_0_len', 'step_n_len', 'cost', 'd_sht', 'd_euc', 'dist_prob', 
+                     'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'dst', 'src','step_0', 
+                     'geometry', 'step_n', 'path', 'epath', 'vpath','dist']
+            attrs = [i for i in attrs if i in list(graph)]
             if 'move_dir' in graph:
                 attrs += ['move_dir']
-                
-            # print(f"drop_atts: {[i for i in attrs if i not in list(graph) ]}")
-            attrs = [i for i in attrs if i in list(graph)]
+
             _dict = {
                 "simplified_traj": _traj,
                 'cands': cands, 
@@ -120,15 +120,17 @@ class ST_Matching():
 
         if metric is not None:
             res['metric'] = self.eval(_traj, res, metric=metric)
-            print(f"{metric}: {res['metric']}")
+            self.logger.info(f"{metric}: {res['metric']}")
 
         if plot or save_fn:
-            fig, ax = self.plot_result(_traj, res)
-            if simplify:
-                traj.plot(ax=ax, color='gray', alpha=.5)
-                _traj.plot(ax=ax, color='yellow', alpha=.5)
-            if not plot:
-               plt.close()
+            fig, ax = self.plot_result(traj, res)
+            # if simplify:
+                # traj.plot(ax=ax, color='gray', alpha=.5)
+                # _traj.plot(ax=ax, color='yellow', alpha=.5)
+            if plot:
+                plt.show()
+            else:
+                plt.close()
             if save_fn:
                 fig.savefig(save_fn, dpi=300, bbox_inches='tight', pad_inches=0.02)
 
@@ -136,7 +138,7 @@ class ST_Matching():
             self.matching_debug(_traj, graph)
         
         if check_topo:
-            # FIXME 重复操作，直接返回结果即可
+            # TODO
             flag = check_steps(self, res, prob_thred=.75, factor=1.2)
             if flag:
                 res = self.matching(_traj, top_k, dir_trans, beam_search,
@@ -163,7 +165,6 @@ class ST_Matching():
         
         return True, None
 
-    @timeit
     def spatial_analysis(self, traj, cands, dir_trans, beam_search, metric={}):
         if beam_search:
             graph = construct_graph(traj, cands, dir_trans=dir_trans)
@@ -180,7 +181,7 @@ class ST_Matching():
         """
         lcss 的 dp 数组 循环部分，使用numba 加速，这个环节可以降低 10% 的时间消耗（20 ms） 
         """
-        # FIXME ll
+        # FIXME 
         assert res is not None or path is not None
         assert metric in ['lcss', 'edr', 'erp']
         
@@ -212,10 +213,11 @@ class ST_Matching():
             _points, 
             path.to_crs(points.crs), 
             normalized = normalized)
+        
         if keep_attrs:
             ps = ps[keep_attrs]
 
-        ps = gpd.GeoDataFrame(pd.concat([_points, ps], axis=1))
+        ps = gpd.GeoDataFrame(pd.concat([_points, ps], axis=1), crs=points.crs)
         if reset_geom:
             ps.loc[:, 'ori_geom'] = points.geometry.apply(lambda x: x.wkt)
             ps.set_geometry('proj_point', inplace=True)
@@ -230,7 +232,6 @@ class ST_Matching():
         
         return traj
 
-    @timeit
     def simplify(self, points:gpd.GeoDataFrame, tolerance:int=None, inplace=False):        
         return simplify_trajetory_points(points, tolerance, inplace=True, logger=self.logger)
 
@@ -256,14 +257,17 @@ class ST_Matching():
         
         return img
 
+    @timeit
     def plot_result(self, traj, info):
         info = deepcopy(info)
         if info['status'] == 3:
             path = None
+        elif info.get('details', {}).get('path', None):
+            path = info['details']['path']
         else:
-            path = self.transform_res_2_path(info, ori_crs=False)
-
-        fig, ax = plot_matching_result(self.align_crs(traj.copy()), path, self.net)
+            path = self.transform_res_2_path(info)
+        
+        fig, ax = plot_matching_result(traj, path, self.net)
         if not info:
             return fig, ax
 
@@ -289,30 +293,34 @@ class ST_Matching():
 
         return fig, ax
 
-    def transform_res_2_path(self, res, ori_crs=True):
-        path = self.net.get_edge(res['epath'], reset_index=True)
+    def transform_res_2_path(self, res, ori_crs=True, attrs=None):
+        if attrs is None:
+            attrs = ['eid', 'way_id', 'src', 'dst', 'name', 'road_type', 'dist', 'geometry']
+        path = self.net.get_edge(res['epath'], attrs, reset_index=True)
+
         _len = len(res['epath']) 
-        
-        # TODO: modify `dist`
         if _len == 1:
+            path.loc[0, 'dist'] *= res['step_n'] - res['step_0']
             path.loc[0, 'geometry'] = shapely.ops.substring(
                 path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
         else:
+            path.loc[0, 'dist'] *= 1 - res['step_0']
             path.loc[0, 'geometry'] = shapely.ops.substring(
                 path.iloc[0].geometry, res['step_0'], 1, normalized=True)
+
+            path.loc[_len - 1, 'dist'] *= res['step_n']
             path.loc[_len - 1, 'geometry'] = shapely.ops.substring(
                 path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
         
         path = path[~path.geometry.is_empty]
         if ori_crs:
-            path = path.to_crs(res['crs'])
+            path = path.to_crs(res['ori_crs'])
 
         return path
 
     def update(self):
         return NotImplementedError
     
-    @timeit
     def align_crs(self, traj):
         return self.net.align_crs(traj)
 
