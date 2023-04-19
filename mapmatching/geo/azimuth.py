@@ -216,10 +216,9 @@ def cal_coords_seq_azimuth(coords):
 if __name__ == '__main__':
     p0 = wkt.loads('POINT (113.934151 22.577512)')
     p1 = wkt.loads('POINT (113.934144 22.577979)')
-    # net.df_edges.loc[82190].geometry
     polyline = wkt.loads('LINESTRING (113.9340705 22.577737, 113.9340788 22.5777828, 113.934093 22.5778236, 113.9341161 22.5778661, 113.934144 22.5779051, 113.934186 22.57795, 113.9342268 22.5779823, 113.9342743 22.5780131, 113.9343212 22.5780352, 113.9343734 22.5780515, 113.9344212 22.5780605, 113.9344796 22.5780669)')
 
-    import matplotlib.pyplot as plt 
+    import matplotlib.pyplot as plt
     import geopandas as gpd
     gpd.GeoDataFrame({'geometry': [p0, p1, polyline]}).plot()
     plt.show()

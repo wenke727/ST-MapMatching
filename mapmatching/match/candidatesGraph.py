@@ -30,12 +30,22 @@ def cal_traj_params(points, move_dir=True, check=False):
 
     return res
 
-def identify_edge_flag(gt):
+def identify_edge_flag(gt:pd.DataFrame):
+    """ Identify the type that querying shortest path from candidate `src` to `dst`. 
+    Refs: Fast map matching, an algorithm integrating hidden Markov model with 
+    precomputation, Fig 4
+
+    Args:
+        gt (pd.DataFrame): graph
+
+    Returns:
+        pd.DataFrame: The graph appended `flag`
+    """
     # (src, dst) on the same edge
     gt.loc[:, 'flag'] = CANDS_EDGE_TYPE.NORMAL
 
     same_edge = gt.eid_0 == gt.eid_1
-    cond = (gt['dist'] - gt['step_0_len']) <= gt['step_n_len']
+    cond = (gt['dist_0'] - gt['step_0_len']) <= gt['step_n_len']
 
     same_edge_normal = same_edge & cond
     gt.loc[same_edge_normal, 'flag'] = CANDS_EDGE_TYPE.SAME_SRC_FIRST
@@ -49,17 +59,17 @@ def identify_edge_flag(gt):
 @timeit
 def construct_graph( points,
                      cands,
-                     common_attrs=['pid', 'eid'],
-                     left_attrs=['dst', 'len_1', 'seg_1', 'dist'],
-                     right_attrs=['src', 'len_0', 'seg_0', 'observ_prob'],
-                     rename_dict={
+                     common_attrs = ['pid', 'eid', 'dist', 'speed'], # TODO 'speed' 
+                     left_attrs = ['dst', 'len_1', 'seg_1'], # 'dist'
+                     right_attrs = ['src', 'len_0', 'seg_0', 'observ_prob'],
+                     rename_dict = {
                             'seg_0': 'step_n',
                             'len_0': 'step_n_len',
                             'seg_1': 'step_0',
                             'len_1': 'step_0_len',
                             'cost': 'd_sht'},
-                     dir_trans=True,
-                     gt_keys=['pid_0', 'eid_0', 'eid_1']
+                     dir_trans = True,
+                     gt_keys = ['pid_0', 'eid_0', 'eid_1']
     ):
     """
     Construct the candiadte graph (level, src, dst) for spatial and temporal analysis.
@@ -88,13 +98,11 @@ def construct_graph( points,
              .rename(columns=rename_dict)
 
     identify_edge_flag(gt)
-
-    # There is a situation where the node does not match         
     traj_info = cal_traj_params(points.loc[cands.pid.unique()], move_dir=dir_trans)
     
     gt = gt.merge(traj_info, on=['pid_0', 'pid_1'])
-    # gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(int)
     gt.loc[:, ['src', 'dst']] = gt.loc[:, ['src', 'dst']].astype(np.int64)
+
     if gt_keys:
         gt.set_index(gt_keys, inplace=True)
     

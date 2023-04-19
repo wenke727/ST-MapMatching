@@ -3,6 +3,7 @@ import shapely
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from shapely import box
 from copy import deepcopy
 import matplotlib.pyplot as plt
 
@@ -46,7 +47,7 @@ class ST_Matching():
                  ll=False
                  ):
         self.net = net
-        edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'geometry']
+        edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'speed', 'geometry']
         # Avoid waste time on created new objects by slicing
         self.base_edges = self.net.df_edges[edge_attrs]
         self.base_edges.sindex
@@ -124,9 +125,6 @@ class ST_Matching():
 
         if plot or save_fn:
             fig, ax = self.plot_result(traj, res)
-            # if simplify:
-                # traj.plot(ax=ax, color='gray', alpha=.5)
-                # _traj.plot(ax=ax, color='yellow', alpha=.5)
             if plot:
                 plt.show()
             else:
@@ -151,6 +149,15 @@ class ST_Matching():
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
+            edges_box = box(*self.base_edges.total_bounds)
+            traj_box = box(*traj.total_bounds)
+            flag = edges_box.contains(traj_box)
+            if not flag:
+                details = "Please adjust the bbox to contain the trajectory."
+                info['detail'] = details
+                self.logger.error(details)
+            assert flag, "check the bbox contained the trajectory or not"
+
             return False, None
         
         # Only one single point matched
@@ -282,7 +289,7 @@ class ST_Matching():
             info.update(probs)
         
         for key, val in info.items():
-            if isinstance(val, float):
+            if 'prob' in key:
                 _str = f"{key}: {val * 100: .2f} %"
             else:
                 _str = f"{key}: {val}"
@@ -295,7 +302,7 @@ class ST_Matching():
 
     def transform_res_2_path(self, res, ori_crs=True, attrs=None):
         if attrs is None:
-            attrs = ['eid', 'way_id', 'src', 'dst', 'name', 'road_type', 'dist', 'geometry']
+            attrs = ['eid', 'way_id', 'src', 'dst', 'name', 'road_type', 'link', 'speed', 'dist', 'geometry']
         path = self.net.get_edge(res['epath'], attrs, reset_index=True)
 
         _len = len(res['epath']) 

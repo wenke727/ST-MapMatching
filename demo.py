@@ -4,13 +4,14 @@ from mapmatching import build_geograph, ST_Matching
 # 方法1：
 # 根据 bbox 从 OSM 下载路网，从头解析获得路网数据
 # net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
-#                      xml_fn="./data/network/LXD.osm.xml", ll=False, n_jobs=1)
+#                      xml_fn="./data/network/LXD.osm.xml", ll=False, n_jobs=16)
 # 将预处理路网保存为 ckpt
 # net.save_checkpoint('./data/network/LXD_graph.ckpt')
 
 # 方法2：
 # 使用预处理路网 
 net = build_geograph(ckpt='./data/network/LXD_graph.ckpt') 
+# net = build_geograph(ckpt='./data/network/Shenzhen_graph_pygeos.ckpt') 
 
 """step 2: 创建地图匹配 matcher"""
 matcher = ST_Matching(net=net, ll=False)

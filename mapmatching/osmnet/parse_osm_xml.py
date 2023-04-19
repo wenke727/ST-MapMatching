@@ -14,7 +14,7 @@ from ..utils.timer import Timer, timeit
 from ..osmnet.misc import Bunch, cal_od_straight_distance
 from ..osmnet.twoway_edge import add_reverse_edge, swap_od, edge_offset
 from ..osmnet.combine_edges import pipeline_combine_links, parallel_process
-from ..setting import highway_filters, link_type_level_dict
+from ..setting import highway_filters, link_type_level_dict, default_speed_dict, default_speed
 from ..geo.ops.to_array import points_geoseries_2_ndarray
 
 
@@ -186,6 +186,7 @@ def post_process_ways(osm_way_dict):
     df_ways.loc[:, 'link'] = df_ways.highway.apply(lambda x: "link" in x)
     df_ways.loc[:, 'highway'] = df_ways.highway.apply(lambda x: x.split('_')[0])
     df_ways.loc[:, 'level'] = df_ways.highway.apply(lambda x: link_type_level_dict.get(x, 99))
+    df_ways.loc[:, 'speed'] = df_ways.highway.apply(lambda x: default_speed_dict.get(x, default_speed))
     df_ways.loc[:, 'src'] = df_ways.ref_node_id_list.apply(lambda x: x[0])
     df_ways.loc[:, 'dst'] = df_ways.ref_node_id_list.apply(lambda x: x[-1])
     assert df_ways.oneway.nunique() >= 2, "check oneways"
@@ -368,7 +369,7 @@ def parse_xml_to_graph(fn, highway_filters=highway_filters, simplify=True, twowa
     if offset:
         df_edges = edge_offset(df_edges).sort_index()
 
-    way_attrs = ['name', 'level', 'highway', 'link', 'maxspeed', 'oneway', 'lanes', 'service']
+    way_attrs = ['name', 'level', 'highway', 'link', 'speed', 'maxspeed', 'oneway', 'lanes', 'service']
     df_edges = append_way_info(df_edges, df_ways, way_attrs)
 
     df_edges.reset_index(inplace=True, drop=True)

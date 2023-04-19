@@ -75,5 +75,12 @@ link_type_level_dict = {'motorway':1, 'trunk':2, 'primary':3, 'secondary':4, 'te
 
 default_lanes_dict = {'motorway': 4, 'trunk': 3, 'primary': 3, 'secondary': 2, 'tertiary': 2, 'residential': 1, 'service': 1,
                       'cycleway':1, 'footway':1, 'track':1, 'unclassified': 1, 'connector': 2}
+
+
+link_speed_reduction_rate = .6
+
+congestion_index = 1
+default_speed = 30 / congestion_index / 3.6
 default_speed_dict = {'motorway': 120, 'trunk': 100, 'primary': 80, 'secondary': 60, 'tertiary': 40, 'residential': 30, 'service': 30,
                       'cycleway':5, 'footway':5, 'track':30, 'unclassified': 30, 'connector':120}
+default_speed_dict = {k: v / congestion_index / 3.6 for k, v in default_speed_dict.items()}

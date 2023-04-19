@@ -17,6 +17,26 @@
 - [ ] resmaple 使用矢量算法
 - [ ] `GeoGraph` aligned to `networkx` :star:
 
+## [V2.0.6] - 2023-4-19
+
+### Added
+
+- mapmatching.matching 
+
+  增加当 candidates 为 None时，检查 bbox 是否覆盖轨迹的边界判断条件
+
+- geopraph.search 增加返回平均速度
+
+- match.postprocess.get_path 增加返回`最短路距离`和`平均速度`
+
+- match.spatialAnalysis
+
+  - cal_temporal_prob 计算子轨迹的平均速度
+
+- osmnet.parse_osm_xml
+
+  - 路网解析新增 speed 字段
+
 ## [V2.0.5] - 2023-4-14
 
 ### Added

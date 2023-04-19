@@ -34,7 +34,7 @@ def get_path(rList:gpd.GeoDataFrame,
     steps = rList.copy()
     steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
     idxs = steps[['pid', 'eid', 'eid_1']].values[:-1].tolist()
-    steps = graph.loc[idxs, ['epath', 'dist_prob', 'trans_prob']].reset_index()
+    steps = graph.loc[idxs, ['epath', 'd_sht', 'avg_speed', 'dist_prob', 'trans_prob']].reset_index()
 
     # FIXME 使用 numba 加速 loop 测试
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.epath]) if x.epath else [x.eid_0]
@@ -48,8 +48,9 @@ def get_path(rList:gpd.GeoDataFrame,
 
     # Case: one step
     if len(eids_lst) == 1:
-        tmp = get_shared_arr(step_0, step_n)
-        res['step_0'] = tmp
+        # tmp = get_shared_arr(step_0, step_n)
+        res['step_0'] = step_0
+        res['step_n'] = step_n
         if metric.get('prob', 1) < prob_thres:
             metric['status'] = STATUS.FAILED
         else:
@@ -62,6 +63,8 @@ def get_path(rList:gpd.GeoDataFrame,
     assert n > 0, "Check od list"
     res['step_0'] = step_0
     res['step_n'] = step_n
+    res['dist'] = steps.d_sht.sum()
+    res['avg_speed'] = np.average(steps['avg_speed'].values, weights = steps['d_sht'].values)
 
     # update metric
     coef = 1 / len(steps.dist_prob)

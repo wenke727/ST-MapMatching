@@ -74,8 +74,9 @@ matcher.eval(traj, res, resample=5, eps=10)
 
 注:
 
-1. 示例输入对应`./data/trajs/traj_0.geojson`，其中 `geometry` 为唯一需要提供的字段，在`vscode`中可借助插件`Geo Data Viewer`可视化;
-2. 输入轨迹点的坐标系默认为 `wgs84`, `gcj02` 的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`,
+1. 示例输入对应`./data/trajs/traj_4.geojson`，其中 `geometry` 为唯一需要提供的字段，在`vscode`中可借助插件`Geo Data Viewer`可视化;
+2. 输入轨迹点的坐标系默认为 `wgs84`, `gcj02` 的轨迹需在调用函数`load_points`明确坐标系`in_sys='gcj'`;
+3. 提供的预处理路网仅覆盖深圳南山区万科云城片区，并没有完成覆盖`./data/trajs`中所有的测试用例。 若需测试所有用例，需自行调整 bbox 获取相应区域的路网。
 
 ### 输出示例
 

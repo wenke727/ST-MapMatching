@@ -4,8 +4,8 @@ from ..geo.query import get_k_neigh_geoms
 
 
 def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
-    """The obervation prob is defined as the likelihood that a GPS sampling point `p_i` mathes a candidate point `C_ij`
-    computed based on the distance between the two points. 
+    """The obervation prob is defined as the likelihood that a GPS sampling point `p_i` 
+    matches a candidate point `C_ij` computed based on the distance between the two points. 
 
     Args:
         df (gpd.GeoDataFrame): Distance series or arrays.
@@ -36,9 +36,10 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            ):
     # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
     cands, _ = get_k_neigh_geoms(points.geometry, edges, 
-                                 query_id='pid', project=True, top_k=top_k, 
+                                 query_id=pid, project=True, top_k=top_k, 
                                  keep_geom=True, radius=radius)
-    cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+    if cands is not None:
+        cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
 
     return cands
     

@@ -1,4 +1,5 @@
 import warnings
+import numpy as np
 from geopandas import GeoDataFrame
 
 from ..graph import GeoDigraph
@@ -13,24 +14,39 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
         warnings.warn("Empty graph layer")
         return gt
 
-    sp_attrs = ['cost', 'epath', 'coords']
-    gt_sp_attrs = ['cost', 'epath', 'step_1']
+    sp_attrs = ['cost', "avg_speed", 'epath', 'coords']
+    gt_sp_attrs = ['cost', "avg_speed", 'epath', 'step_1']
     rout_planning = lambda x: net.search(x.dst, x.src, max_steps, max_dist)
     paths = gt.apply(rout_planning, axis=1, result_type='expand')[sp_attrs]
     gt.loc[:, gt_sp_attrs] = paths.values
-    gt.loc[:, 'd_sht'] = gt.cost + gt.step_n_len + gt.step_0_len
+
+    cal_temporal_prob(gt)
+
+    gt.loc[:, 'd_sht'] = gt.cost + gt.step_0_len + gt.step_n_len 
 
     # od 位于同一条edge上，但起点相对终点位置偏前
     flag_1_idxs = gt.query("flag == 1").index
     if len(flag_1_idxs):
         gt.loc[flag_1_idxs, ['epath', 'step_1']] = None, None
-        gt.loc[flag_1_idxs, 'd_sht'] = gt.step_n_len + gt.step_0_len - gt.dist
+        # TODO change `cost` -> `-dist_0`
+        gt.loc[flag_1_idxs, 'd_sht'] = - gt.dist_0 + gt.step_0_len + gt.step_n_len
 
     # distance trans prob
     dist = gt.d_euc / gt.d_sht
     mask = dist > 1 
     dist[mask] = 1 / dist[mask]
     gt.loc[:, 'dist_prob'] = dist
+
+
+    return gt
+
+def cal_temporal_prob(gt: GeoDataFrame):
+    speeds = gt[['speed_0', 'speed_1', 'avg_speed']].values
+    weights = gt[['step_0_len', 'step_n_len', 'cost']].values
+    weights[weights == np.inf] = 0
+    avg_speeds = np.average(speeds, weights = weights, axis=1)
+    # gt.loc[:, 'eta'] = gt.d_sht.values / avg_speeds
+    gt.loc[:, 'avg_speed'] = avg_speeds
 
     return gt
 

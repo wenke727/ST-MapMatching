@@ -36,9 +36,11 @@ def gdf_wgs_to_gcj(gdf):
         gdf['geometry'] = gdf.apply(lambda i: LineString(pd.DataFrame(i.geometry.coords.xy).T.rename(
             columns={0: 'x', 1: 'y'}).apply(lambda x: ct.wgs84_to_gcj02(x.x, x.y), axis=1)), axis=1)
     elif isinstance(gdf.iloc[0].geometry, MultiPolygon):
-        gdf['geometry'] = gdf.geometry.apply(lambda item: MultiPolygon([ Polygon(pd.DataFrame( geom.exterior.coords.xy ).T.rename(columns={0: 'x', 1: 'y'}).apply( lambda x: ct.wgs84_to_gcj02(x.x, x.y), axis=1)) for geom in item.geoms]) )
+        gdf['geometry'] = gdf.geometry.apply(lambda item: MultiPolygon([Polygon(pd.DataFrame(geom.exterior.coords.xy).T.rename(
+            columns={0: 'x', 1: 'y'}).apply(lambda x: ct.wgs84_to_gcj02(x.x, x.y), axis=1)) for geom in item.geoms]))
     elif isinstance(gdf.iloc[0].geometry, Point):
-            gdf['geometry'] = gdf.apply(lambda i: Point(ct.wgs84_to_gcj02(i.geometry.x, i.geometry.y)), axis=1)
+        gdf['geometry'] = gdf.apply(lambda i: Point(
+            ct.wgs84_to_gcj02(i.geometry.x, i.geometry.y)), axis=1)
     return gdf
 
 
@@ -53,9 +55,11 @@ def gdf_gcj_to_wgs(gdf):
         gdf['geometry'] = gdf.apply(lambda i: LineString(pd.DataFrame(i.geometry.coords.xy).T.rename(
             columns={0: 'x', 1: 'y'}).apply(lambda x: ct.gcj02_to_wgs84(x.x, x.y), axis=1)), axis=1)
     elif isinstance(gdf.iloc[0].geometry, MultiPolygon):
-        gdf['geometry'] = gdf.geometry.apply(lambda item: MultiPolygon([ Polygon(pd.DataFrame( geom.exterior.coords.xy ).T.rename(columns={0: 'x', 1: 'y'}).apply( lambda x: ct.gcj02_to_wgs84(x.x, x.y), axis=1)) for geom in item.geoms]) )
+        gdf['geometry'] = gdf.geometry.apply(lambda item: MultiPolygon([Polygon(pd.DataFrame(geom.exterior.coords.xy).T.rename(
+            columns={0: 'x', 1: 'y'}).apply(lambda x: ct.gcj02_to_wgs84(x.x, x.y), axis=1)) for geom in item.geoms]))
     elif isinstance(gdf.iloc[0].geometry, Point):
-            gdf['geometry'] = gdf.apply(lambda i: Point(ct.gcj02_to_wgs84(i.geometry.x, i.geometry.y)), axis=1)
+        gdf['geometry'] = gdf.apply(lambda i: Point(
+            ct.gcj02_to_wgs84(i.geometry.x, i.geometry.y)), axis=1)
     return gdf
 
 def coord_transfer( res, in_sys = 'gcj', out_sys = 'wgs' ):

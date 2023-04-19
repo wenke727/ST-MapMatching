@@ -1,49 +1,127 @@
 #%%
-from mapmatching import build_geograph, ST_Matching
-from mapmatching.setting import DATA_FOLDER
-from tilemap import plot_geodata, add_basemap
+from tqdm import tqdm
+import networkx as nx
+import itertools
+import geopandas as gpd
+from networkx import shortest_simple_paths
+from pathlib import Path
 
-from mapmatching.geo.io import to_geojson
-import matplotlib.pyplot as plt
+from stmm import build_geograph, ST_Matching
+from tilemap import plot_geodata
 
-ll = False
-net = build_geograph(ckpt='./data/network/Shenzhen_graph_pygeos.ckpt', ll=ll)
-matcher = ST_Matching(net=net, ll=ll)
+"""step 1: 获取/加载路网"""
+folder = Path("./data/network")
+# 方法1：
+# 根据 bbox 从 OSM 下载路网，从头解析获得路网数据
+# net = build_geograph(bbox = [113.928518,  22.551085, 114.100451,  22.731744],
+#                      xml_fn = folder / "SZN.osm.xml", ll=False, n_jobs=32)
+# 将预处理路网保存为 ckpt
+# net.save_checkpoint(folder / 'SZN_graph.ckpt')
+
+# net = build_geograph(ckpt='../dataset/cache/SZN_graph.ckpt') 
+net = build_geograph(ckpt = folder / 'SZN_graph.ckpt') 
+matcher = ST_Matching(net=net, ll=False)
+
+#%%
+plot_geodata(net.df_edges.to_crs(4326))
+net.df_edges.head(5)
+
+# %%
+
+def get_k_shortest_paths(G, u, v, k):
+    paths_gen = shortest_simple_paths(G, u, v, "length")
+    for path in itertools.islice(paths_gen, 0, k):
+        yield path
+
+def plot_top_k_shortest_path():
+    geoms = []
+
+    for path in get_k_shortest_paths(G, 9168697035, 9167366553, 3):
+        epath = net.transform_vpath_to_epath(path)
+        path_geom = net.transform_epath_to_linestring(epath)
+        geoms.append(path_geom)
+
+    geoms = gpd.GeoDataFrame(geometry=geoms, crs=net.df_edges.crs)
+
+    plot_geodata(geoms.to_crs(4326).reset_index(), column='index', legend=True, alpha=.5)
+
+    return 
+
+G = nx.DiGraph()
+
+# # 最短路测试
+# nx.shortest_path(G, 9168697035, 9167366553, weight='dist')
 
 
 #%%
-traj = matcher.load_points("./data/trajs/traj_4.geojson").reset_index(drop=True)
-proj_traj = net.align_crs(traj)
-plot_geodata(traj)
+import networkx as nx
+import numpy as np
+import pandas as pd
+import geopandas as gpd
 
-# %%
-from mapmatching.geo.query import get_k_neigh_geoms, plot_candidates
-from geopandas import GeoSeries
-from mapmatching.geo.ops.point2line import cut_linestring
-from mapmatching.match.geometricAnalysis import cal_observ_prob
+class GeoGraph(nx.DiGraph):
+    def __init__(self, incoming_graph_data=None, reindex_node=True, **attr):
+        super().__init__(incoming_graph_data, **attr)
+        self.nodeid_long2short = {}
+        self.nodeid_short2long = {}
+        self.nxt_nid = 0
+        self.reindex_node = reindex_node
 
-points = traj
-net.df_edges.loc[:, 'dist'] = net.df_edges.length
-cands, _ = get_k_neigh_geoms(points['geometry'], net.df_edges[['eid', 'src', 'dst', 'dist', 'geometry']], 
-                             normalized=False, radius=50, top_k=5, keep_geom=True)
+    def search(self, o, d):
+        return nx.shortest_path(self, o, d, weight='weight')
 
-# plot_candidates(cands)
+    def load_graph(self, edges:gpd.GeoDataFrame, src='src', dst='dst',  weight='dist'):
+        # 新增边
+        for name, item in tqdm(edges.iterrows()):
+            o = item[src]
+            d = item[dst]
 
-cands
-cands.loc[:, ['seg_0', 'seg_1']] = cands.apply(
-    lambda x: cut_linestring(x['edge_geom'], x['offset']), axis=1, result_type='expand')
-cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
-cands.loc[:, 'len_0'] = GeoSeries(cands.seg_0).length
-cands.loc[:, 'len_1'] = GeoSeries(cands.seg_1).length
-cands
+            if self.reindex_node:
+                o = self._get_short_node_id(o)
+                d = self._get_short_node_id(d)
 
-# %%
-from mapmatching.match.candidatesGraph import construct_graph
+            _w = item[weight]
+            self.add_edge(o, d, weight=_w)
 
-graph = construct_graph(traj, cands.rename(columns={'qid': 'pid'}), dir_trans=True)
+    def _get_short_node_id(self, nid):
+        if not self.reindex_node:
+            return nid
+        
+        if nid in self.nodeid_long2short:
+            return self.nodeid_long2short[nid]
+        
+        self.nodeid_long2short[nid] = self.nxt_nid
+        self.nodeid_short2long[self.nxt_nid] = nid
+        tmp = self.nxt_nid
+        self.nxt_nid += 1
+        
+        return tmp
 
-# prob, rList, graph = find_matched_sequence(cands, graph, net, dir_trans)
+    """ coordination """
+    def align_crs(self, gdf):
+        return
 
-# %%
-graph
+    """ vis """
+    def add_edge_map(self, ax, *arg, **kwargs):
+        return
+        
+    """ property"""
+    @property
+    def crs(self):
+        return self.df_edges.crs
+    
+    @property
+    def epsg(self):
+        return self.df_edges.crs.to_epsg()
+
+
+digraph = GeoGraph(reindex_node=False)
+digraph.load_graph(net.df_edges)
+o, d = 9168697035, 9167366553
+
+o = digraph._get_short_node_id(o)
+d = digraph._get_short_node_id(d)
+digraph.search(o, d)
+
+
 # %%

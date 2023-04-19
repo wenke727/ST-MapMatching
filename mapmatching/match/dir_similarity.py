@@ -5,6 +5,7 @@ from ..geo.azimuth import cal_linestring_azimuth_cos_dist
 
 
 def cal_dir_prob(gt:GeoDataFrame, geom='geometry'):
+    # TODO: 适用 sub_string 代替现有的情况
     # Add: dir_prob
     def _cal_dir_similarity(x):
         return cal_linestring_azimuth_cos_dist(x[geom], x['move_dir'], weight=True)

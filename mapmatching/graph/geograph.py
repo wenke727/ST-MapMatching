@@ -52,8 +52,14 @@ class GeoDigraph(Digraph):
         route = self.searcher.search(src, dst, max_steps, max_dist)
         
         if 'epath' not in route:
-            route['epath'] = self.transform_vpath_to_epath(route['vpath'])
-        
+            epath = self.transform_vpath_to_epath(route['vpath'])
+            route['epath'] = epath
+            if epath is not None:
+                _df = self.get_edge(epath)
+                route['avg_speed'] = np.average(_df.speed.values, weights=_df.dist.values)
+            else:
+                route['avg_speed'] = 0
+                
         if coords and 'coords' not in route:
             lst = route['epath']
             if lst is None:
@@ -298,6 +304,7 @@ class GeoDigraph(Digraph):
             self.crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
 
         self.df_edges.to_crs(self.crs_prj, inplace=True)
+        self.df_edges.loc[:, 'dist'] = self.df_edges.length
         self.df_nodes.to_crs(self.crs_prj, inplace=True)
 
         return True
