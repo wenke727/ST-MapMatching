@@ -2,35 +2,61 @@
 import io
 import os
 import time
-import pandas as pd
 import numpy as np
+import pandas as pd
 from PIL import Image
+from typing import List
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import box
 
-from ..utils.parallel_helper import parallel_process
-from ..utils.img import merge_np_imgs
+from .candidatesGraph import get_shortest_geometry
+
 from ..graph import GeoDigraph
+from ..utils.img import merge_np_imgs
+from ..utils.parallel_helper import parallel_process
 from ..geo.vis import plot_geodata, TILEMAP_FLAG, add_basemap
 
-def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=None, legend=True, factor=4):
-    """Plot the matching situation of one pair of od.
+
+def plot_matching_debug_pair(traj, edges, item, level, src, dst, ax=None, maximun=None, legend=True, factor=4):
+    """
+    Plot the matching situation of one pair of OD (origin-destination).
 
     Args:
+        traj (pandas.core.frame.DataFrame): Trajectory data containing points.
+        edges (geopandas.geodataframe.GeoDataFrame): Edge data.
         item (pandas.core.series.Series): One record in tList. The multi-index here is (src, dest).
-        net ([type], optional): [description]. Defaults to net.
-        ax ([type], optional): [description]. Defaults to None.
-        legend (bool, optional): [description]. Defaults to True.
+        level (int): Level of the graph.
+        src (str): Source point.
+        dst (str): Destination point.
+        ax (matplotlib.axes.Axes, optional): Axes object to plot on. Defaults to None.
+        maximun (float, optional): Maximum value. Defaults to None.
+        legend (bool, optional): Whether to show the legend. Defaults to True.
+        factor (int, optional): Factor used for color determination. Defaults to 4.
 
     Returns:
-        ax: Ax.
-    
+        matplotlib.axes.Axes: Axes object.
+
     Example:
-        matching_debug_subplot(graph_t.loc[1])
+        plot_matching_debug_pair(traj_data, edges_data, graph_t.loc[1], level=2, src="A", dst="B")
+
+    Notes:
+        - The 'traj' DataFrame should contain trajectory data with required columns.
+        - The 'edges' GeoDataFrame should contain edge data with required columns.
+        - The 'item' Series represents one record in tList.
+        - The 'level' parameter specifies the level of the graph.
+        - The 'src' and 'dst' parameters represent the source and destination points.
+        - The 'ax' parameter is an optional Axes object to plot on. If not provided, a new Axes object will be created.
+        - The 'maximun' parameter is used for determining the maximum value. If provided, it helps determine the color of the plotted data.
+        - The 'legend' parameter controls whether to show the legend.
+        - The 'factor' parameter is a factor used for color determination.
+        - The function returns the Axes object used for plotting.
+
     """
+    points = traj.loc[[level, item.pid_1]]
+
     if ax is None:
-        _, ax = plot_geodata(traj, alpha=.6, color='white', reset_extent=False)
+        _, ax = plot_geodata(points, alpha=.6, color='white', reset_extent=False)
     else:
         traj.plot(ax=ax, alpha=.6, color='white')
         ax.axis('off')
@@ -41,19 +67,21 @@ def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=
     # OD
     point_0 = traj.loc[[level]]
     point_n = traj.loc[[item.pid_1]]
-    point_0.plot(ax=ax, marker="*", label=f'O ({src})', zorder=8)
-    point_n.plot(ax=ax, marker="s", label=f'D ({dst})', zorder=8)
-    font_style = {'zorder': 8, "ha": "center", "va":"bottom", "zorder":9}
+    point_0.plot(ax=ax, marker="D", label=f'O', zorder=8, facecolor="white", edgecolor='green')
+    point_n.plot(ax=ax, marker="s", label=f'D', zorder=8, facecolor="white", edgecolor='blue')
+
+    # OD label
+    font_style = {'zorder': 9, "ha": "center", "va":"bottom"}
     trans_p_str = f"trans: {item.trans_prob:.2f}"
     if 'dir_prob' in item:
-        trans_p_str += f"(dist: {item.dist_prob:.2f}, dir: {item.dir_prob:.2f})"
-    ax.text(point_0.geometry.x, point_0.geometry.y, trans_p_str, **font_style)
-    ax.text(point_n.geometry.x, point_n.geometry.y, f"oberv: {item.observ_prob:.2f}", **font_style)
+        trans_p_str += f" = {item.dist_prob:.2f} * {item.dir_prob:.2f}"
+    ax.text(point_0.geometry.x, point_0.geometry.y, trans_p_str, color='green', **font_style)
+    ax.text(point_n.geometry.x, point_n.geometry.y, f"oberv: {item.observ_prob:.2f}", color='blue',**font_style)
 
     # path
-    gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='Path')
-    edges.iloc[[0]].plot(ax=ax, linestyle='--', alpha=.8, label=f'first({src})', color='green')
-    edges.iloc[[1]].plot(ax=ax, linestyle=':', alpha=.8, label=f'last({dst})', color='black')
+    edges.iloc[[0]].plot(ax=ax, linestyle='--', alpha=.7, label=f'{src}', color='green', linewidth=5)
+    edges.iloc[[1]].plot(ax=ax, linestyle=':', alpha=.7, label=f'{dst}', color='blue', linewidth=5)
+    gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='Path', alpha=.6, linewidth=2)
 
     # aux
     prob = item.observ_prob * item.trans_prob
@@ -74,18 +102,17 @@ def matching_debug_subplot(traj, edges, item, level, src, dst, ax=None, maximun=
     return ax
     
 def ops_matching_debug_subplot(traj, edges, item, layer_id, src, dst, maximun):
-    ax = matching_debug_subplot(traj, edges, item, layer_id, src, dst, maximun=maximun)
+    ax = plot_matching_debug_pair(traj, edges, item, layer_id, src, dst, maximun=maximun)
     with io.BytesIO() as buffer:
         plt.savefig(buffer, bbox_inches='tight', pad_inches=0.1, dpi=300)
         image = Image.open(buffer)
-        # image = image.convert("RGB")
         array = np.asarray(image)
     
     plt.close()
 
     return array
 
-def debug_gt_level_parallel(net, traj, graph, layer_id, n_jobs=16):
+def plot_matching_debug_level(net, traj, graph, layer_id, n_jobs=32):
     df_layer = graph.loc[layer_id]
     if df_layer.empty:
         return None
@@ -101,6 +128,97 @@ def debug_gt_level_parallel(net, traj, graph, layer_id, n_jobs=16):
     img = Image.fromarray(img_np).convert("RGB")
 
     return img
+
+def debug_traj_matching(traj: gpd.GeoDataFrame, graph: gpd.GeoDataFrame, net: GeoDigraph,
+                        level: List[int]=None, debug_folder: str='./debug'):
+    """
+    Perform matching debug for trajectory on multiple layers of the graph.
+
+    Args:
+        traj (gpd.GeoDataFrame): The trajectory GeoDataFrame.
+        graph (gpd.GeoDataFrame): The graph GeoDataFrame.
+        level (int or List[int], optional): The level(s) of the graph to perform matching debug. If None, all layers will be processed. Defaults to None.
+        debug_folder (str, optional): The folder path to save debug images. Defaults to './debug'.
+
+    Returns:
+        PIL.Image.Image: The debug image of the last processed layer.
+
+    Example:
+        >>> trajectory = gpd.GeoDataFrame([...])  # Trajectory GeoDataFrame
+        >>> graph = gpd.GeoDataFrame([...])  # Graph GeoDataFrame
+        >>> matcher = Matcher()  # Matcher object
+        >>> debug_image = matcher.matching_debug(trajectory, graph, level=2, debug_folder='./debug')
+        >>> print(debug_image)
+
+    Notes:
+        - The 'traj' GeoDataFrame should contain the trajectory data with a 'geometry' column.
+        - The 'graph' GeoDataFrame should contain the graph data with a 'geometry' column.
+        - The 'level' parameter specifies the layer(s) of the graph to perform matching debug. It can be an integer or a list of integers.
+        - If 'level' is None, the matching debug will be performed on all layers of the graph.
+        - The 'debug_folder' parameter specifies the folder path to save the debug images.
+        - The function will save debug images for each processed layer in the specified folder and return the debug image of the last processed layer.
+    """
+    if 'geometry' not in graph:
+        graph = get_shortest_geometry(graph, 'geometry')
+        graph = gpd.GeoDataFrame(graph, crs=net.crs_prj)
+        graph = graph.set_geometry('geometry')
+
+    if level is None:
+        layer_ids = graph.index.get_level_values(0).unique().sort_values().values
+    else:
+        layer_ids = level if isinstance(level, list) else [level]
+
+    for idx in layer_ids:
+        img = plot_matching_debug_level(net, traj, graph, idx)
+        img.save(os.path.join(debug_folder, f"level_{idx:02d}.jpg"))
+    
+    return img
+
+def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, net: GeoDigraph, 
+                         info: dict = None, column=None, categorical=True):
+    traj_crs = traj_points.crs.to_epsg()
+    if traj_crs != path.crs.to_epsg():
+        path = path.to_crs(traj_crs)
+
+    _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
+    fig, ax = plot_geodata(_df, figsize=(18, 12), tile_alpha=.7, reset_extent=False, alpha=0)
+
+    traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
+    traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
+    if path is not None:
+        path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
+
+    ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
+    ax.legend(loc=1)
+
+    if not info:
+        return fig, ax
+
+    # append information
+    for att in ['epath', "step_0", "step_n", 'details']:
+        if att not in info:
+            continue
+        info.pop(att)
+
+    text = []
+    if "probs" in info:
+        probs = info.pop('probs')
+        info.update(probs)
+    
+    for key, val in info.items():
+        if 'prob' in key:
+            _str = f"{key}: {val * 100: .2f} %"
+        else:
+            if isinstance(val, float):
+                _str = f"{key}: {val: .0f}"
+            else:
+                _str = f"{key}: {val}"
+        text.append(_str)
+
+    x0, x1, y0, y1 = ax.axis()
+    ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text))
+
+    return fig, ax
 
 # deprecated
 def debug_gt_level(net, traj, df_layer, layer_id, n_jobs=16, debug_folder='./'):
@@ -128,7 +246,7 @@ def debug_gt_level(net, traj, df_layer, layer_id, n_jobs=16, debug_folder='./'):
     for i, src in enumerate(rows):
         for j, dst in enumerate(cols):
             ax = plt.subplot(n_rows, n_cols, i * n_cols + j + 1) 
-            matching_debug_subplot(net, traj, df_layer.loc[src].loc[dst], layer_id, src, dst, ax=ax, maximun=_max)
+            plot_matching_debug_pair(net, traj, df_layer.loc[src].loc[dst], layer_id, src, dst, ax=ax, maximun=_max)
 
     if 'dir_prob' in list(df_layer):
         _title = f'Level: {layer_id} [observ * trans (dis, dir)]'
@@ -202,22 +320,3 @@ def _base_plot(df, column=None, categorical=True):
     
     return ax
 
-def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, net: GeoDigraph, 
-                         column=None, categorical=True):
-    traj_crs = traj_points.crs.to_epsg()
-    if traj_crs != path.crs.to_epsg():
-        path = path.to_crs(traj_crs)
-
-    _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
-    fig, ax = plot_geodata(_df, figsize=(18, 12), tile_alpha=.7, reset_extent=False, alpha=0)
-
-    traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
-    traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
-    if path is not None:
-        path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
-
-    ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
-
-    ax.legend(loc=1)
-
-    return fig, ax

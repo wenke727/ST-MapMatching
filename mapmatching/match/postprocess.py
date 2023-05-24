@@ -1,10 +1,13 @@
+import shapely
 import numpy as np
+import pandas as pd
 import geopandas as gpd
-from shapely.geometry import LineString
+from geopandas import GeoDataFrame
 
 from .status import STATUS
-from .misc import get_shared_arr
 from ..utils.timer import timeit
+from ..graph import GeoDigraph
+from ..geo.ops.point2line import project_points_2_linestrings
 
 
 @timeit
@@ -83,7 +86,6 @@ def get_path(rList:gpd.GeoDataFrame,
             
     return res, steps
 
-
 def _get_first_and_step_n(cands, rList):
     step_0 = cands.query(
         f'pid == {rList.iloc[0].pid} and eid == {rList.iloc[0].eid}').iloc[0]
@@ -94,3 +96,59 @@ def _get_first_and_step_n(cands, rList):
 
     return cal_offset(step_0), cal_offset(step_n)
 
+def transform_mathching_res_2_path(res: dict, net: GeoDigraph, ori_crs: bool=True, attrs: list=None):
+    if attrs is None:
+        attrs = ['eid', 'way_id', 'src', 'dst', 'name', 'road_type', 'link', 'speed', 'dist', 'geometry']
+    
+    path = net.get_edge(res['epath'], attrs, reset_index=True)
+
+    _len = len(res['epath']) 
+    if _len == 1:
+        path.loc[0, 'dist'] *= res['step_n'] - res['step_0']
+        path.loc[0, 'geometry'] = shapely.ops.substring(
+            path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
+    else:
+        path.loc[0, 'dist'] *= 1 - res['step_0']
+        path.loc[0, 'geometry'] = shapely.ops.substring(
+            path.iloc[0].geometry, res['step_0'], 1, normalized=True)
+
+        path.loc[_len - 1, 'dist'] *= res['step_n']
+        path.loc[_len - 1, 'geometry'] = shapely.ops.substring(
+            path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
+    
+    path = path[~path.geometry.is_empty]
+    if ori_crs:
+        path = path.to_crs(res['ori_crs'])
+
+    return path
+
+def project(points: GeoDataFrame, path: GeoDataFrame, keep_attrs=['eid', 'proj_point'], normalized=True, reset_geom=True):
+    """
+    Project points onto a path represented by a GeoDataFrame.
+    
+    Args:
+        points (GeoDataFrame): Points to be projected.
+        path (GeoDataFrame): Path to project the points onto.
+        keep_attributes (list, optional): Attributes to keep in the projected points. Defaults to ['eid', 'proj_point'].
+        normalize (bool, optional): Whether to normalize the projection. Defaults to True.
+        reset_geometry (bool, optional): Whether to reset the geometry column in the projected points. Defaults to True.
+
+    Returns:
+        GeoDataFrame: Projected points.
+
+    Example:
+        projected_points = project_points(points, path)
+    """
+    _points = points[[points.geometry.name]]
+    ps = project_points_2_linestrings(_points, path.to_crs(points.crs), normalized=normalized)
+    
+    if keep_attrs:
+        ps = ps[keep_attrs]
+
+    ps = gpd.GeoDataFrame(pd.concat([_points, ps], axis=1), crs=points.crs)
+    if reset_geom:
+        ps.loc[:, 'ori_geom'] = points.geometry.apply(lambda x: x.wkt)
+        ps.set_geometry('proj_point', inplace=True)
+        ps.drop(columns=['geometry'], inplace=True)
+    
+    return ps

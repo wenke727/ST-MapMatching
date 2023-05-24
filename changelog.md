@@ -11,11 +11,75 @@
 - [x] linear referencing 矢量化操作
 - [x] 可视化模块，投影坐标统一
 - [ ] 控制多进程，支撑在windows下运行 :star:
-- [ ] 中间过程，探讨 geom 是否有必要，减少非必要计算的开销
+- [x] 中间过程，探讨 geom 是否有必要，减少非必要计算的开销
 - [ ] 双向 A* 最短路算法，纠正
 - [ ] ALT 算法，加速最短路搜索速度
 - [ ] resmaple 使用矢量算法
 - [ ] `GeoGraph` aligned to `networkx` :star:
+
+## [V2.0.7] - 2023-5-24
+
+### Added
+
+- mapmatching/match/candidatesGraph.py
+
+  - get_shortest_geometry
+
+    Generate the shortest path geometry based on the given step_0,  step_1 and step_n.
+
+### Changed
+
+- mapmatching/match/**viterbi**.py
+
+  - find_matched_sequence
+
+    函数参数增加：prune_start_layer
+
+  - prune_layer
+
+    <u>更正剪枝算法</u>，将根据 `局部概率` 剪枝更改为 `全局概率` 剪枝
+
+- mapmatching/match/**candidatesGraph**.py
+
+  - identify_edge_flag: 
+
+    querying SP distance from candidate $C_n$ to $C_{n+1}$, 
+
+    针对 $C_{n+1}$ 和 $C_{n}$ 落在同一个 edge上，针对 $C_{n+1}$ 的投影节点相对 $C_n$ 靠前且在阈值内（5 米）的情况，仍然视为 `CANDS_EDGE_TYPE.SAME_SRC_FIRST` 
+
+- mapmatching/match/**spatialAnalysis**.py
+
+  - cal_dist_prob
+
+    针对 $C_{n+1}$ 的投影节点相对 $C_n$ 靠前且在阈值内（5 米）的情况，将 `dist_prob` 手动设置为 1
+
+  - cal_temporal_prob
+
+    增加考虑 np.inf 和 0 两种特殊边界，统一替换为 `1e-6`
+
+- mapmatching/match/**postprocess**.py
+
+  - transform_mathching_res_2_path： 增加原位于 matching 模块的转换代码
+  - project： 增加原位于 matching 模块的 Project points onto a matching path 代码
+
+- mapmatching/match/**visualization**.py
+
+  - plot_matching_debug_subplot：修改绘图的样式
+  - plot_matching_result：增加原位于 matching 模块的 info 信息展示的代码
+
+- resample_point_seq：存在相同节点的情况，需一开始去重操作，避免 `pd.cut` 报错
+
+- mapmatching/osmnet/parse_osm_xml.py
+
+  - neg_od_set 增加处理边界，但值不为 None 时才需要增加反方向路段
+
+### deprecated
+
+- mapmatching/match/misc.py
+  - merge_step_geoms
+  - get_shared_linestring
+  - _merge_steps
+  - merge_coords_intervals_on_same_edge
 
 ## [V2.0.6] - 2023-4-19
 
@@ -85,7 +149,7 @@
 ### Changed
 
 - 修改原输出 dict 中 `step_0` 和 `step_n` 的含义，
-    从原来的`坐标序列`改成投影点相对整段道路的`偏移百分比`
+  从原来的`坐标序列`改成投影点相对整段道路的`偏移百分比`
 
 ## [V2.0.1] - 2023-3-7
 
@@ -159,8 +223,8 @@
 ### Changed
 
 -  geo.metric.lcss 通过 numba 加速 dp 矩阵的遍历
-- ST_Matching
-  - project：调用重构的`project_points_2_linestrings`
+-  ST_Matching
+   - project：调用重构的`project_points_2_linestrings`
 
 ## [V1.3.6] - 2023-2-13
 

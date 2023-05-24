@@ -330,11 +330,14 @@ def _process_multi_edges(df_edges, ori_df_edges, df_ways):
         neg_od_set = od_set - pos_od_set
         neg_od_set = {str(eval(x)[::-1]) for x in neg_od_set}
         neg_od_set = df_edges_waypoints.query("waypoints in @neg_od_set").index
-        neg_df_edges = swap_od(ori_df_edges.loc[neg_od_set])
-        neg_df_edges.loc[:, 'dir'] = -1
 
-        _multi_edges = pd.concat([pos_df_edges, neg_df_edges])
-        logger.debug(f"od list len: {len(od_set)}, df_segs len: {_multi_edges.shape[0]}")
+        _multi_edges = None
+        if len(neg_od_set) != 0:
+            neg_df_edges = swap_od(ori_df_edges.loc[neg_od_set])
+            neg_df_edges.loc[:, 'dir'] = -1
+
+            _multi_edges = pd.concat([pos_df_edges, neg_df_edges])
+            logger.debug(f"od list len: {len(od_set)}, df_segs len: {_multi_edges.shape[0]}")
     else:
         _multi_edges = None
 

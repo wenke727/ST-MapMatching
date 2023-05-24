@@ -7,9 +7,44 @@ from .dir_similarity import cal_dir_prob
 from .candidatesGraph import construct_graph
 
 
-def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000):
-    # Add: w, v, path, geometry
-    assert 'flag' in gt, "Chech the attribute `flag` in gt or not"
+def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_dist: int = 10000, eps: float = 1e-6):
+    """
+    Calculate the distance probability for each edge in the graph.
+
+    Args:
+        gt (GeoDataFrame): The graph GeoDataFrame.
+        net (GeoDigraph): The network GeoDigraph.
+        max_steps (int, optional): The maximum number of steps for route planning. Defaults to 2000.
+        max_dist (int, optional): The maximum distance for route planning. Defaults to 10000.
+        eps (float, optional): The epsilon value for comparing distances. Defaults to 1e-6.
+
+    Returns:
+        GeoDataFrame: The graph GeoDataFrame with additional columns 'd_sht' and 'dist_prob'.
+
+    Example:
+        >>> graph = GeoDataFrame([...])  # Graph GeoDataFrame
+        >>> network = GeoDigraph([...])  # Network GeoDigraph
+        >>> graph = cal_dist_prob(graph, network, max_steps=3000, max_dist=15000, eps=1e-5)
+        >>> print(graph)
+
+    Notes:
+        - The 'gt' GeoDataFrame should contain the graph data with required columns including 'flag', 'cost', 'avg_speed', 'epath', 'coords', 'step_0_len', 'step_n_len', 'dist_0', 'd_euc'.
+        - The 'net' GeoDigraph should be a network representation used for route planning.
+        - The 'max_steps' parameter specifies the maximum number of steps for route planning.
+        - The 'max_dist' parameter specifies the maximum distance for route planning.
+        - The 'eps' parameter is used for comparing distances and should be a small positive value.
+        - The function calculates the shortest paths and temporal probabilities for each edge in the graph.
+        - It adds the following columns to the 'gt' GeoDataFrame:
+            - 'cost': The cost of the shortest path.
+            - 'avg_speed': The average speed on the shortest path.
+            - 'epath': The edge path of the shortest path.
+            - 'step_1': The first step of the shortest path.
+            - 'd_sht': The total distance of the shortest path.
+            - 'dist_prob': The distance probability for the edge.
+        - The function modifies the 'gt' GeoDataFrame in place and returns the modified GeoDataFrame.
+    """
+
+    assert 'flag' in gt, "Check the attribute `flag` in gt or not"
     if gt.empty:
         warnings.warn("Empty graph layer")
         return gt
@@ -24,12 +59,14 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
 
     gt.loc[:, 'd_sht'] = gt.cost + gt.step_0_len + gt.step_n_len 
 
-    # od 位于同一条edge上，但起点相对终点位置偏前
+    # OD is on the same edge, but the starting point is relatively ahead of the endpoint
     flag_1_idxs = gt.query("flag == 1").index
     if len(flag_1_idxs):
         gt.loc[flag_1_idxs, ['epath', 'step_1']] = None, None
-        # TODO change `cost` -> `-dist_0`
-        gt.loc[flag_1_idxs, 'd_sht'] = - gt.dist_0 + gt.step_0_len + gt.step_n_len
+        gt.loc[flag_1_idxs, 'd_sht'] = gt.step_0_len + gt.step_n_len - gt.dist_0
+
+        idx = gt.query(f"flag == 1 and d_sht < {eps}").index
+        gt.loc[idx, 'd_sht'] = gt.d_euc
 
     # distance trans prob
     dist = gt.d_euc / gt.d_sht
@@ -37,16 +74,39 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     dist[mask] = 1 / dist[mask]
     gt.loc[:, 'dist_prob'] = dist
 
-
     return gt
 
-def cal_temporal_prob(gt: GeoDataFrame):
+def cal_temporal_prob(gt: GeoDataFrame, eps=1e-6):
+    """
+    Calculate the temporal probability for each edge in the graph.
+
+    Args:
+        gt (GeoDataFrame): The graph GeoDataFrame.
+        eps (float, optional): The epsilon value for handling infinite or zero weights. Defaults to 1e-6.
+
+    Returns:
+        GeoDataFrame: The graph GeoDataFrame with additional column 'avg_speed'.
+
+    Example:
+        >>> graph = GeoDataFrame([...])  # Graph GeoDataFrame
+        >>> graph = cal_temporal_prob(graph, eps=1e-5)
+        >>> print(graph)
+
+    Notes:
+        - The 'gt' GeoDataFrame should contain the graph data with required columns including 'speed_0', 'speed_1', 'avg_speed', 'step_0_len', 'step_n_len', 'cost'.
+        - The 'eps' parameter is used for handling infinite or zero weights and should be a small positive value.
+        - The function calculates the average speed for each edge based on the given weights.
+        - It adds the 'avg_speed' column to the 'gt' GeoDataFrame.
+        - The function modifies the 'gt' GeoDataFrame in place and returns the modified GeoDataFrame.
+    """
     speeds = gt[['speed_0', 'speed_1', 'avg_speed']].values
     weights = gt[['step_0_len', 'step_n_len', 'cost']].values
-    weights[weights == np.inf] = 0
-    avg_speeds = np.average(speeds, weights = weights, axis=1)
-    # gt.loc[:, 'eta'] = gt.d_sht.values / avg_speeds
+    weights[weights == np.inf] = eps
+    weights[weights == 0] = eps
+    avg_speeds = np.average(speeds, weights=weights, axis=1)
+
     gt.loc[:, 'avg_speed'] = avg_speeds
+    # gt.loc[:, 'eta'] = gt.d_sht.values / avg_speeds
 
     return gt
 

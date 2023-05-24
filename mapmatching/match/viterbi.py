@@ -36,29 +36,37 @@ def merge_k_heapq(arrays, count=100):
         
     return res
 
-def prune_layer(df_layer, prune=True, trim_factor=.75, use_pandas=False):
+def prune_layer(df_layer, level, scores, start_level=3, prune=True, trim_factor=.75, use_pandas=False):
+    if start_level > level:
+        df = df_layer[['prob']].sort_values('prob', ascending=False)\
+                               .groupby('eid_1')\
+                               .head(1).reset_index()
+        
+        return df.set_index('eid_1')
+    
     # prune -> pick the most likely one
-    _max_prob = df_layer['prob'].max()
     
     if use_pandas:
+        _max_prob = df_layer['prob'].max()
         df = df_layer[['prob']].sort_values('prob', ascending=False)\
                                .head(100 if prune else 5)\
                                .query(f"prob > {_max_prob * trim_factor}")\
                                .groupby('eid_1')\
                                .head(1).reset_index()
     else:
-        thred = _max_prob * trim_factor
+        ps = df_layer.apply(lambda x: scores[x.name[1]] * x.prob, axis=1)
+        prob_thred = ps.max() * trim_factor
         arrs = defaultdict(list)
         for row in df_layer[['prob']].itertuples():
             idx, prob = getattr(row, "Index"), getattr(row, "prob")
-            if prob < thred:
+            if prob < prob_thred:
                 continue
             heapq.heappush(arrs[idx[2]], (-prob, idx))
 
         records = merge_k_heapq(arrs, 100 if prune else 5)   
         df = pd.DataFrame(records, columns=['pid_0', 'eid_0', 'eid_1', 'prob'])
 
-    return df
+    return df.set_index('eid_1')
 
 def reconstruct_path(f_score, prev_path):
     epath = []
@@ -96,7 +104,7 @@ def print_level(df_layer):
     f = lambda x: sorted(df_layer.index.get_level_values(x).unique())
     return f"{f(1)} -> {f(2)}"
 
-def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=0.75, trim_layer=5, level='trace'):
+def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', prune_factor=0.75, prune_start_layer=3, level='trace'):
     # Initialize
     times = []
     timer = Timer()
@@ -123,10 +131,9 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', trim_factor=
         df_layer = get_trans_prob_bet_layers(df_layer, net, dir_trans)
         # ti mes.append(timer.stop())
         df_layer.loc[:, 'prob'] = cal_prob_func(prev_probs, df_layer.trans_prob * df_layer.observ_prob, mode)
-        _df = prune_layer(df_layer, idx >= trim_layer, trim_factor)
+        _df = prune_layer(df_layer, idx, f_score[-1], prune_start_layer, prune_factor)
 
         # post-process
-        _df = _df.set_index('eid_1')
         for name, item in _df.iterrows():
             prev_path[idx + 1][name] = (idx, int(item.eid_0))
         prev_states = list(_df.index.unique())

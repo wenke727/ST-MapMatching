@@ -8,6 +8,7 @@ from .distance import cal_points_geom_seq_distacne
 
 def resample_point_seq(points, step=2, last=True):
     # TODO linear referencing + speedup
+    points = points[~(points == points.shift(1))]
     if points.shape[0] == 1:
         return gpd.GeoDataFrame(points), np.array([points.iloc[0].coords[0]])
 
