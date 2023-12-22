@@ -17,6 +17,14 @@
 - [ ] resmaple 使用矢量算法
 - [ ] `GeoGraph` aligned to `networkx` :star:
 
+## [V2.0.8] - 2023-12-22
+
+### Added
+
+- mapmatching/geo/ops/distance.py
+  - `cal_pointwise_distance_geoseries`(原函数名 geoseries_distance), 计算两个 GeoSeries 点序列的距离，输出为 n 
+  - `cal_distance_matrix_geoseries`, 计算两个 GeoSeries 点序列两两之间的距离，输出大小为 n x m
+
 ## [V2.0.7] - 2023-5-24
 
 ### Added

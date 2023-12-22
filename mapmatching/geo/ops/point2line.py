@@ -5,7 +5,7 @@ from shapely import Point, LineString
 import geopandas as gpd
 from geopandas import GeoDataFrame
 
-from .distance import cal_coords_seq_distance, geoseries_distance
+from .distance import cal_coords_seq_distance, cal_pointwise_distance_geoseries
 
 
 @numba.jit
@@ -135,7 +135,7 @@ def project_points_2_linestrings(points:GeoDataFrame, lines:GeoDataFrame,
         axis=1, result_type='expand'
     ).values
 
-    proj_df.loc[:, 'dist_p2c'] = geoseries_distance(proj_df['point_geom'], proj_df['proj_point'])
+    proj_df.loc[:, 'dist_p2c'] = cal_pointwise_distance_geoseries(proj_df['point_geom'], proj_df['proj_point'])
 
     if drop_ori_geom:
         proj_df.drop(columns=['point_geom', 'edge_geom'], inplace=True)
