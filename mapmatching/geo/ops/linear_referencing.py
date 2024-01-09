@@ -1,5 +1,6 @@
 import numba
 import numpy as np
+from geopandas import GeoSeries
 from shapely import LineString, Point
 from .distance import coords_seq_distance
 from .to_array import geoseries_to_coords, points_geoseries_2_ndarray
@@ -64,28 +65,7 @@ def closest_point_on_segments(point:np.ndarray, lines:np.ndarray, eps=1e-9):
 
     return proj, dist, ratio
 
-# @numba.jit
-def cut_lines(idx, proj, ratio, coords):
-    NONE_COORD = None
-    if idx == 0 and ratio == 0:
-        return NONE_COORD, coords
-    if idx == coords.shape[0] - 2 and ratio == 1:
-        return coords, NONE_COORD
-
-    if ratio == 0:
-        seg_0 = coords[:idx + 1] 
-        seg_1 = coords[idx:]    
-    elif ratio < 1:
-        seg_0 = np.concatenate([coords[:idx+1], [proj]]) 
-        seg_1 = np.concatenate([[proj], coords[idx+1:]])     
-    else:
-        seg_0 = coords[:idx+2]
-        seg_1 = coords[idx+1:]
-    
-    return seg_0, seg_1
-
 def linear_referencing(point:Point, polyline:LineString, cut=True, to_geom=False):
-    # TODO vectorized
     # iterating through each segment in the polyline and returning the one with minimum distance
 
     p_coords = np.array(point.coords[0])
@@ -104,7 +84,7 @@ def linear_referencing(point:Point, polyline:LineString, cut=True, to_geom=False
     if not cut:
         res['offset'] = offset
     else:
-        seg_0, seg_1 = cut_lines(idx, proj, ratio, l_coords)
+        seg_0, seg_1 = cut_linestring_coords(idx, proj, ratio, l_coords)
         if to_geom:
             seg_0 = LineString(seg_0)
             seg_1 = LineString(seg_1)
@@ -129,7 +109,7 @@ def lines_to_matrix(lines, n_rows, n_cols):
     return _lines, mask
 
 # @numba.jit
-def cut_line(idx, proj, ratio, coords):
+def cut_linestring_coords(idx, proj, ratio, coords):
     NONE_COORD = None
     if idx == 0 and ratio == 0:
         return NONE_COORD, coords
@@ -150,12 +130,47 @@ def cut_line(idx, proj, ratio, coords):
 
 # @numba.jit
 def numba_cut_lines(col_idxs, closest, ratio, lines):
-    res = [cut_line(i, c, r, s) 
-           for i, c, r, s in zip(col_idxs, closest, ratio, lines)]
+    res = [cut_linestring_coords(i, c, r, s) 
+            for i, c, r, s in zip(col_idxs, closest, ratio, lines)]
     
     return res
 
-def linear_referencing_vector(points:np.array, lines:np.array, cut=True, eps=1e-9):
+def compute_point_to_line_proximity(point_geoms: GeoSeries, line_geoms: GeoSeries, cut: bool = True, eps: float = 1e-9):
+    """
+    Calculate the proximity of each point in a GeoSeries to the nearest line in another GeoSeries. 
+    This function computes the closest point on each linestring to each point, the distance to this closest point, 
+    and optionally cuts the line at the closest point.
+
+    Parameters:
+    - point_geoms (GeoSeries): A GeoSeries containing the point geometries.
+    - line_geoms (GeoSeries): A GeoSeries containing the line geometries.
+    - cut (bool, optional): If True, the function will cut each line at the closest point to each point. Defaults to True.
+    - eps (float, optional): A small epsilon value to prevent division by zero in distance calculations. Defaults to 1e-9.
+
+    Returns:
+    dict: A dictionary containing the following keys:
+        'proj_point' (list): The closest point on each line to each point.
+        'dist_p2c' (ndarray): The distance from each point to the closest point on the line.
+        If 'cut' is False:
+            'offset' (ndarray): The offset distance along the line to the closest point.
+        If 'cut' is True:
+            'seg_0' (list): The segment of each line before the closest point.
+            'seg_1' (list): The segment of each line after the closest point.
+            'len_0' (ndarray): The length of the line segment before the closest point.
+            'len_1' (ndarray): The length of the line segment after the closest point.
+
+    Raises:
+    ValueError: If `point_geoms` or `line_geoms` is empty.
+
+    Note:
+    The function assumes that the input geometries are valid and properly formatted as required by the GeoSeries.
+    """
+    if point_geoms.empty or line_geoms.empty:
+        return {}
+    
+    points = points_geoseries_2_ndarray(point_geoms)
+    lines = geoseries_to_coords(line_geoms)
+
     n_len = [len(i) for i in lines]
     n_cols = max(n_len)
     n_rows = len(lines)
@@ -164,7 +179,8 @@ def linear_referencing_vector(points:np.array, lines:np.array, cut=True, eps=1e-
     segs = np.dstack([_lines[:, :-1][:,:,np.newaxis],
                       _lines[:, 1:][:,:,np.newaxis]])
     pq = segs[:, :, 1] - segs[:, :, 0]
-    d = np.power(pq, 2).sum(axis=-1)
+    # d = np.power(pq, 2).sum(axis=-1)
+    d = np.einsum('ijk,ijk->ij', pq, pq)
     len_np = np.sqrt(d)
     d[d == 0] = eps
 
@@ -174,49 +190,45 @@ def linear_referencing_vector(points:np.array, lines:np.array, cut=True, eps=1e-
     t = pq[:, :, 0] * dx + pq[:, :, 1] * dy
     
     ratios = t / d
-    ratios[ratios < 0] = 0
-    ratios[ratios > 1] = 1
+    ratios = np.clip(ratios, 0, 1)
 
     offset = pq * ratios[:, :, np.newaxis] # (n, l, 2)
     closests = offset + segs[:, :, 0]
     dists = np.linalg.norm(points[:, np.newaxis] - closests, axis=-1)
 
-    col_idxs = np.argmin(dists, axis=1)
+    # dist_p2c
     row_idxs = np.arange(n_rows)
-    
-    cp = closests[row_idxs, col_idxs]
+    col_idxs = np.argmin(dists, axis=1)
     r = ratios[row_idxs, col_idxs]
     dist_p2c = dists[row_idxs, col_idxs]
+    proj_points = closests[row_idxs, col_idxs]
 
+    # offset
     sum_mask = np.zeros((n_rows, n_cols-1), dtype=np.bool_)
     for i, col in enumerate(col_idxs):
         sum_mask[i, :col] = True
+    offsets = np.sum(len_np, axis=1, where=sum_mask) + len_np[row_idxs, col_idxs] * r
+    # offset = np.add.reduceat(len_np, row_idxs, where=(row_idxs[:, None] <= col_idxs), axis=1) \
+    #          + len_np[row_idxs, col_idxs] * r
 
-    offset = np.sum(len_np, axis=1, where=sum_mask) + len_np[row_idxs, col_idxs] * r
-
-    res = {}
-    res['proj_point'] = [i for i in cp]
-    res['dist_p2c'] = dist_p2c
-
+    # res
+    res = {
+        'proj_point': list(proj_points), 
+        'dist_p2c': dist_p2c
+    }
     if not cut:
-        res['offset'] = offset
+        res['offset'] = offsets
     else:
         # TODO normalized = True
-        tmp = numba_cut_lines(col_idxs, cp, r, lines)
+        tmp = numba_cut_lines(col_idxs, proj_points, r, lines)
         seg_0, seg_1 = list(zip(*tmp))
-        res['seg_0'] = seg_0
-        res['seg_1'] = seg_1
-        res['len_0'] = offset
-        res['len_1'] = len_np.sum(axis=1) - offset
-
-    return res
-
-def linear_referencing_geom(point_geoms, line_geoms, cut=True, eps=1e-9):
-    _points = points_geoseries_2_ndarray(point_geoms)
-    _lines = geoseries_to_coords(line_geoms)
-
-    res = linear_referencing_vector(_points, _lines, cut, eps)    
-
+        res.update({
+            'seg_0': seg_0,
+            'seg_1': seg_1,
+            'len_0': offsets,
+            'len_1': len_np.sum(axis=1) - offsets
+        })
+    
     return res
 
 

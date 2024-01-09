@@ -37,7 +37,7 @@ def get_path(rList:gpd.GeoDataFrame,
     steps = rList.copy()
     steps.loc[:, 'eid_1'] = steps.eid.shift(-1).fillna(0).astype(int)
     idxs = steps[['pid', 'eid', 'eid_1']].values[:-1].tolist()
-    steps = graph.loc[idxs, ['epath', 'd_sht', 'avg_speed', 'dist_prob', 'trans_prob']].reset_index()
+    steps = graph.loc[idxs, ['epath', 'sp_dist', 'avg_speed', 'dist_prob', 'trans_prob']].reset_index()
 
     # FIXME 使用 numba 加速 loop 测试
     extract_eids = lambda x: np.concatenate([[x.eid_0], x.epath]) if x.epath else [x.eid_0]
@@ -66,8 +66,8 @@ def get_path(rList:gpd.GeoDataFrame,
     assert n > 0, "Check od list"
     res['step_0'] = step_0
     res['step_n'] = step_n
-    res['dist'] = steps.d_sht.sum()
-    res['avg_speed'] = np.average(steps['avg_speed'].values, weights = steps['d_sht'].values)
+    res['dist'] = steps.sp_dist.sum()
+    res['avg_speed'] = np.average(steps['avg_speed'].values, weights = steps['sp_dist'].values)
 
     # update metric
     coef = 1 / len(steps.dist_prob)
@@ -99,6 +99,7 @@ def _get_first_and_step_n(cands, rList):
 def transform_mathching_res_2_path(res: dict, net: GeoDigraph, ori_crs: bool=True, attrs: list=None):
     if attrs is None:
         attrs = ['eid', 'way_id', 'src', 'dst', 'name', 'road_type', 'link', 'speed', 'dist', 'geometry']
+        attrs = [i for i in attrs if i in net.df_edges.columns]
     
     path = net.get_edge(res['epath'], attrs, reset_index=True)
 

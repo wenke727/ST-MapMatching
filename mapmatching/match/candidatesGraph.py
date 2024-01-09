@@ -30,7 +30,7 @@ def cal_traj_params(points, move_dir=True, check=False):
 
     Notes:
         - The input points should be in a GeoSeries with a valid geometry column.
-        - The DataFrame returned will contain columns such as 'pid_0', 'pid_1', 'd_euc' (Euclidean distance),
+        - The DataFrame returned will contain columns such as 'pid_0', 'pid_1', 'euc_dist' (Euclidean distance),
           and 'move_dir' (movement direction) if move_dir=True.
 
     """
@@ -45,7 +45,7 @@ def cal_traj_params(points, move_dir=True, check=False):
         
     _dict = {'pid_0': idxs[:-1],
              'pid_1': idxs[1:],
-             'd_euc': dist_arr}
+             'euc_dist': dist_arr}
 
     if move_dir:
         dirs = cal_coords_seq_azimuth(coords)
@@ -124,7 +124,7 @@ def construct_graph( points,
                             'len_0': 'step_n_len',
                             'seg_1': 'step_0',
                             'len_1': 'step_0_len',
-                            'cost': 'd_sht'},
+                            'cost': 'sp_dist'},
                      dir_trans = True,
                      gt_keys = ['pid_0', 'eid_0', 'eid_1']
     ):

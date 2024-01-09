@@ -1,6 +1,6 @@
 import numpy as np
 import geopandas as gpd
-from ..geo.query import get_k_neigh_geoms
+from ..geo.query import find_nearest_geometries
 
 
 def cal_observ_prob(dist, bias=0, deviation=20, normal=True):
@@ -33,13 +33,16 @@ def analyse_geometric_info(points: gpd.GeoDataFrame,
                            radius: float = 50,
                            pid: str = 'pid',
                            eid: str = 'eid',
+                           bias=0,
+                           deviation=20
                            ):
     # TODO improve effeciency: get_k_neigbor_edges 50 %, project_point_to_line_segment 50 %
-    cands, _ = get_k_neigh_geoms(points.geometry, edges, 
+    cands, _ = find_nearest_geometries(points.geometry, edges, 
                                  query_id=pid, project=True, top_k=top_k, 
-                                 keep_geom=True, radius=radius)
+                                 keep_geom=True, max_distance=radius)
     if cands is not None:
-        cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c)
+        # ? deviation 如何取值合适
+        cands.loc[:, 'observ_prob'] = cal_observ_prob(cands.dist_p2c, bias, deviation)
 
     return cands
     

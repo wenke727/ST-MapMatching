@@ -4,7 +4,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 from haversine import haversine, haversine_vector, Unit
 
-# from .to_array import points_geoseries_2_ndarray
+from .to_array import points_geoseries_2_ndarray
 
 
 def get_length(geoms):
@@ -62,9 +62,10 @@ def cal_distance_matrix_geoseries(points1, points2, align=True):
     n, m = len(points1), len(points2)
 
     # Replicate arr1 and arr2
-    repeated_arr1 = points1.repeat(m)#.reset_index(drop=True)
-    repeated_arr2 = gpd.GeoSeries(pd.concat([points2] * n), crs=points2.crs)#.reset_index(drop=True)
-
+    repeated_arr1 = points1.repeat(m).reset_index(drop=True)
+    tiled_arr2 = np.tile(points2, n)
+    repeated_arr2 = gpd.GeoSeries(tiled_arr2, crs=points2.crs).reset_index(drop=True)
+    
     # Calculate distances
     distances = cal_pointwise_distance_geoseries(repeated_arr1, repeated_arr2, align=align)
 

@@ -1,6 +1,7 @@
 network/
 result/
 data/
+cells/
 check.py
 
 # Byte-compiled / optimized / DLL files

@@ -353,7 +353,7 @@
   - PathPlanning: `check_od` -> `has_edge` 
 - `match.spatialAnalysis.cal_dist_grob`
   - 增加边界 gt.empty 逻辑
-  - Penalize slightly shorter paths， 增加一个系数 1.01，当 gt.d_euc / gt.w > 1.01 时候，才会 0.95 / dist
+  - Penalize slightly shorter paths， 增加一个系数 1.01，当 gt.euc_dist / gt.w > 1.01 时候，才会 0.95 / dist
 
 - `geo.azimuth.cal_linestring_azimuth_cos_dist` 增加考虑边界因素，即 weight 为空列表的时候，调用 np.average(lst, weights=weights)  出错
 
@@ -591,7 +591,7 @@
       - src 和 dst 的先后顺序
     - 处理：对调 flag == 1 的 src 和 dst
   - cal_traj_params
-    - d_euc
+    - euc_dist
     - move_dir
 
 - geometricAnalysis

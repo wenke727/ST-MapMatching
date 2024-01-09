@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from loguru import logger
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString, box
@@ -15,7 +16,7 @@ from ..utils.serialization import save_checkpoint, load_checkpoint
 
 
 class GeoDigraph(Digraph):
-    def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, 
+    def __init__(self, df_edges:GeoDataFrame=None, df_nodes:GeoDataFrame=None, weight='dist',
                  crs_wgs:int=4326, crs_prj:int=None, ll:bool=False, *args, **kwargs):
         self.df_edges = df_edges
         self.df_nodes = df_nodes
@@ -31,7 +32,7 @@ class GeoDigraph(Digraph):
         
         if not ll:
             self.to_proj()
-        super().__init__(df_edges[['src', 'dst', 'dist']].sort_index().values, 
+        super().__init__(df_edges[['src', 'dst', weight]].sort_index().values, 
                              df_nodes.to_dict(orient='index'), *args, **kwargs)
         self.init_searcher()
 
@@ -56,7 +57,10 @@ class GeoDigraph(Digraph):
             route['epath'] = epath
             if epath is not None:
                 _df = self.get_edge(epath)
-                route['avg_speed'] = np.average(_df.speed.values, weights=_df.dist.values)
+                if _df.dist.sum() == 0:
+                    route['avg_speed'] = np.average(_df.speed.values)
+                else:
+                    route['avg_speed'] = np.average(_df.speed.values, weights=_df.dist.values)
             else:
                 route['avg_speed'] = 0
                 
@@ -80,6 +84,7 @@ class GeoDigraph(Digraph):
     def get_edge(self, eid, attrs=None, reset_index=False):
         """Get edge by eid [0, n]"""
         res = self._get_feature('df_edges', eid, attrs, reset_index)
+        logger.debug(f"\n{res}")
 
         return res
 
@@ -287,7 +292,7 @@ class GeoDigraph(Digraph):
 
         return gdf
 
-    def to_wgs(self, gdf):
+    def convert_to_wgs(self, gdf):
         assert gdf.crs is not None
         gdf.to_crs(self.crs_wgs, inplace=True)
 
@@ -299,12 +304,16 @@ class GeoDigraph(Digraph):
         
         return True
 
-    def to_proj(self):
+    def to_proj(self, refresh_distance=False, eps=1e-5):
         if self.crs_prj is None:
             self.crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
 
         self.df_edges.to_crs(self.crs_prj, inplace=True)
-        self.df_edges.loc[:, 'dist'] = self.df_edges.length
+        if refresh_distance:
+            self.df_edges.loc[:, 'dist'] = self.df_edges.length
+            mask = self.df_edges.loc[:, 'dist'] == 0
+            self.df_edges.loc[mask, 'dist'] = eps
+            
         self.df_nodes.to_crs(self.crs_prj, inplace=True)
 
         return True

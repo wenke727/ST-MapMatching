@@ -5,104 +5,38 @@ import geopandas as gpd
 from geopandas import GeoDataFrame
 from shapely import geometry as shapely_geom
 
-from .ops.linear_referencing import linear_referencing_geom
+from .ops.linear_referencing import compute_point_to_line_proximity
 from ..utils import timeit
 
-@timeit
-def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid', 
-                      radius: float = 50, top_k=None, predicate: str = 'intersects', 
-                      check_diff=True, project=True, keep_geom=True):
-    """
-    Get the k nearest geometries of the query within a search radius using a built-in grid-based spatial index.
-
-    Args:
-        query (GeoDataFrame, GeoSeries, geometry): The query object.
-        gdf (GeoDataFrame): The base geometry.
-        query_id (str, optional): The index of the query object. Defaults to 'qid'.
-        radius (float, optional): The search radius. Defaults to 50 (in meters for the WGS system).
-        top_k (int, optional): The number of top-k elements to retrieve. Defaults to None (retrieve all).
-        predicate (str, optional): The predicate operation in geopandas. Defaults to 'intersects'.
-        check_diff (bool, optional): Check if there are no matching queries. Defaults to True.
-        project (bool, optional): Project the query object to gdf. Only supports Point geometries. Defaults to True.
-        keep_geom (bool, optional): Whether to keep the geometry columns in the result. Defaults to True.
-        normalized (bool, optional): Normalize the distances. Defaults to False.
-
-    Returns:
-        GeoDataFrame: The query result.
-
-    Example:
-        # Example usage 1
-        import geopandas as gpd
-        from stmm.geo.query import get_K_neighbors
-
-        traj = matcher.load_points("./data/trajs/traj_4.geojson").head(4)
-        query = traj[['PID','geometry']].head(1).copy()
-        gdf = net.df_edges[['eid', 'geometry']].copy()
-
-        df_cands, no_cands_query = get_K_neighbors(query, gdf, top_k=8)
-        plot_candidates(query, gdf, df_cands)
-
-        # Example usage 2
-        import geopandas as gpd
-        from shapely import LineString, Point
-        from stmm.geo.query import plot_candidates, get_K_neighbors
-
-        lines = [LineString([[0, i], [10, i]]) for i in range(0, 10)]
-        lines += [LineString(([5.2,5.2], [5.8, 5.8]))]
-        edges = gpd.GeoDataFrame({'geometry': lines, 
-                                    'way_id':[i for i in range(10)] + [5]})
-
-        a, b = Point(1, 1.1), Point(5, 5.1) 
-        points = gpd.GeoDataFrame({'geometry': [a, b]}, index=[1, 3])
-        points.loc[:, 'PID'] = points.index
-
-        res, _ = get_K_neighbors(points, edges, buffer=2, top_k=2, ll=False)
-        ax = plot_candidates(points, edges, res)
-    """
-
+def find_nearest_geometries(query_point: GeoDataFrame, geometries: GeoDataFrame, query_id='qid', 
+                            max_distance: float = 50, top_k=None, predicate: str = 'intersects', 
+                            check_diff=True, project=True, keep_geom=True):
     # TODO: Determine appropriate index for gdf
 
-    # Check spatial index
-    if not gdf.has_sindex:
+    # Ensure spatial index is built
+    if not geometries.has_sindex:
         try:
             print("rebuild sindex: ")
-            gdf.sindex
+            geometries.sindex
         except:
             raise ValueError()
 
     # Prepare query
-    if isinstance(query, shapely_geom.base.BaseGeometry):
-        _query = gpd.GeoSeries([query])
-    if isinstance(query, GeoDataFrame):
-        if query_id in list(query):
-            _query = query.set_index(query_id)['geometry']
-        else:
-            _query = query['geometry'].copy()
-            _query.index.set_names(query_id, inplace=True)
-    elif isinstance(query, gpd.GeoSeries):
-        _query = query.copy()
-        _query.index.set_names(query_id, inplace=True)
-    else:
-        raise TypeError(query)
-
-    if _query.crs != gdf.crs:
-        _query = _query.to_crs(gdf.crs)
-    _query.index.set_names(query_id, inplace=True)
-
-    # Query bulk
-    get_box = lambda i: shapely_geom.box(i.x - radius, i.y - radius, i.x + radius, i.y + radius)
-    query_geoms = _query.apply(get_box)
-    cands = gdf.sindex.query_bulk(query_geoms, predicate)
+    _query = prepare_query_object(query_point, query_id, geometries.crs)
+    
+    # Perform spatial indexing query
+    cands = query_spatial_index(_query, geometries, max_distance, predicate)
     if len(cands[0]) == 0:
         return None, None
 
-    df_cands = _get_cands(_query, gdf, cands, query_id)
-    _project(df_cands, project)
+    # Process query results
+    df_cands = process_query_results(_query, geometries, cands, query_id, project)
 
-    if radius:
-        df_cands.query(f"dist_p2c <= {radius}", inplace=True)
+    # Further filtering and sorting
+    if max_distance:
+        df_cands.query(f"dist_p2c <= {max_distance}", inplace=True)
     if top_k:
-        df_cands = _filter_candidate(df_cands, query_id, top_k)
+        df_cands = filter_top_k_candidates(df_cands, query_id, top_k)
 
     if not keep_geom:
         df_cands.drop(columns=["query_geom", "edge_geom"], inplace=True)
@@ -113,13 +47,11 @@ def get_k_neigh_geoms(query: GeoDataFrame, gdf: GeoDataFrame, query_id='qid',
         cands_pid = set(cands[0])
         all_pid = set(_query.index.unique())
         no_cands_query = all_pid.difference(cands_pid)
-        warnings.warn(f"{no_cands_query} has no neighbors within the {radius} search zone.")
+        warnings.warn(f"{no_cands_query} has no neighbors within the {max_distance} search zone.")
 
-    return df_cands.set_geometry('edge_geom').set_crs(gdf.crs), no_cands_query
+    return df_cands.set_geometry('edge_geom').set_crs(geometries.crs), no_cands_query
 
-
-@timeit
-def _get_cands(_query, gdf, cands, query_id):
+def retrieve_candidate_geometries(_query, gdf, cands, query_id):
     _points = _query.iloc[cands[0]]
     
     df_cands = gdf.iloc[cands[1]]
@@ -129,8 +61,7 @@ def _get_cands(_query, gdf, cands, query_id):
 
     return df_cands
 
-@timeit
-def _project(df_cands, project=True):
+def project_query_on_candidates(df_cands, project=True):
     # dist_p2c
     if not project:
         cal_proj_dist = lambda x: x['query_geom'].distance(x['edge_geom'])
@@ -138,14 +69,13 @@ def _project(df_cands, project=True):
 
         return df_cands
 
-    df_projs = linear_referencing_geom(df_cands['query_geom'], df_cands['edge_geom'])
+    df_projs = compute_point_to_line_proximity(df_cands['query_geom'], df_cands['edge_geom'])
     df_cands.loc[:, df_projs.keys()] = df_projs.values()
     # df_cands = gpd.GeoDataFrame(df_cands, crs=gdf.crs, geometry='proj_point')
 
     return df_cands
     
-
-def plot_candidates(cands):
+def visualize_query_and_candidates(cands):
     # TODO draw buffer
     from ..geo.vis import plot_geodata
     _, ax = plot_geodata(cands, color='r', tile_alpha=.6, alpha=0)
@@ -158,8 +88,7 @@ def plot_candidates(cands):
 
     return ax
 
-@timeit
-def _filter_candidate(df: gpd.GeoDataFrame,
+def filter_top_k_candidates(df: gpd.GeoDataFrame,
                       pid: str = 'pid',
                       top_k: int = 5,
                       ):
@@ -180,3 +109,67 @@ def _filter_candidate(df: gpd.GeoDataFrame,
            .reset_index(drop=True)
 
     return df
+
+def prepare_query_object(query, query_id, gdf_crs):
+    """
+    Prepare the query object for spatial querying.
+
+    Args:
+        query: The query object (GeoDataFrame, GeoSeries, or geometry).
+        query_id: The identifier for the query object.
+        gdf_crs: The coordinate reference system of the base GeoDataFrame.
+
+    Returns:
+        GeoSeries: The prepared query object.
+    """
+    if isinstance(query, shapely_geom.base.BaseGeometry):
+        _query = gpd.GeoSeries([query])
+    elif isinstance(query, GeoDataFrame):
+        _query = query.set_index(query_id)['geometry'] if query_id in list(query) else query['geometry']
+        _query.index.set_names(query_id, inplace=True)
+    elif isinstance(query, gpd.GeoSeries):
+        _query = query.copy()
+        _query.index.set_names(query_id, inplace=True)
+    else:
+        raise TypeError("Query object type is not supported.")
+
+    if _query.crs != gdf_crs:
+        _query = _query.to_crs(gdf_crs)
+
+    return _query
+
+def query_spatial_index(query_objects, gdf, radius, predicate):
+    """
+    Perform spatial indexing query.
+
+    Args:
+        gdf: Base GeoDataFrame with spatial index.
+        query_objects: Prepared query objects.
+        radius: Search radius.
+        predicate: Spatial predicate for querying (e.g., "intersects").
+
+    Returns:
+        Tuple: Indices of matched geometries in gdf.
+    """
+    get_box = lambda geom: shapely_geom.box(geom.x - radius, geom.y - radius, geom.x + radius, geom.y + radius)
+    query_boxes = query_objects.apply(get_box)
+    return gdf.sindex.query_bulk(query_boxes, predicate)
+
+def process_query_results(query_objects, gdf, cands, query_id, project):
+    """
+    Process the results of a spatial query.
+
+    Args:
+        query_objects: The query objects.
+        gdf: Base GeoDataFrame.
+        cands: Indices of matched geometries.
+        query_id: Identifier for the query object.
+        project: Whether to project query objects onto gdf geometries.
+
+    Returns:
+        GeoDataFrame: DataFrame of candidates with additional info.
+    """
+    df_cands = retrieve_candidate_geometries(query_objects, gdf, cands, query_id)
+    project_query_on_candidates(df_cands, project)
+    
+    return df_cands

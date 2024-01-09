@@ -2,14 +2,18 @@ import os
 import sys
 import shapely
 import warnings
+import pandas as pd
+from shapely import wkt
 import geopandas as gpd
 from loguru import logger
-import sqlalchemy
 
-from ..setting import postgre_url
+try:
+    import sqlalchemy
+    from ..setting import postgre_url
+    ENGINE = sqlalchemy.create_engine(postgre_url)
+except:
+    ENGINE=None
 
-
-ENGINE = sqlalchemy.create_engine(postgre_url)
 
 def has_table(name, con=None, engine=None):
     flag = False
@@ -133,6 +137,15 @@ def to_geojson(gdf, fn):
     gdf.to_file(fn, driver="GeoJSON")
 
     return 
+
+def read_csv_to_geodataframe(file_path, crs="EPSG:4326"):
+    df = pd.read_csv(file_path)
+    
+    df['geometry'] = df['geometry'].apply(wkt.loads)
+    gdf = gpd.GeoDataFrame(df, geometry='geometry', crs=crs)
+    
+    return gdf
+
 
 def set_engine(url):
     global ENGINE

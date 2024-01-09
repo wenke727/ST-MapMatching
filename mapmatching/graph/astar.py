@@ -131,13 +131,3 @@ class Astar(PathPlanning):
         
         return route[::-1]
 
-
-if __name__ == "__main__":
-    from stmm.graph import GeoDigraph
-    network = GeoDigraph()
-    network.load_checkpoint(ckpt='../../data/network/Shenzhen_graph_pygeos.ckpt')
-    # network.to_postgis('shenzhen')
-
-    from tqdm import tqdm
-    from stmm.utils.serialization import load_checkpoint
-    astar_search_memo = load_checkpoint('../../data/debug/astar_search_memo.pkl')

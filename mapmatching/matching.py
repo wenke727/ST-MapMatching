@@ -44,7 +44,9 @@ class ST_Matching():
                  prob_thres=.8,
                  log_folder='./log',
                  console=True,
-                 ll=False
+                 ll=False,
+                 loc_bias=0,
+                 loc_deviaction=200,
                  ):
         self.net = net
         edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'speed', 'geometry']
@@ -55,6 +57,9 @@ class ST_Matching():
         self.crs_wgs = crs_wgs
         self.crs_prj = crs_prj
         self.ll = ll
+        
+        self.loc_bias = loc_bias
+        self.loc_deviaction = loc_deviaction
         
         self.debug_folder = DEBUG_FOLDER
         self.logger = make_logger(log_folder, console=console, level="INFO")
@@ -72,7 +77,8 @@ class ST_Matching():
     def matching(self, traj, top_k=None, dir_trans=False, beam_search=True,
                  simplify=True, tolerance=5, plot=False, save_fn=None,
                  debug_in_levels=False, details=False, metric=None, 
-                 check_duplicate=False, check_topo=False, search_radius=None):
+                 check_duplicate=False, check_topo=False, search_radius=None, 
+                 bias=0, deviation=500):
         self.logger.trace("start")
         res = {'status': STATUS.UNKNOWN, 'ori_crs': deepcopy(traj.crs.to_epsg())}
 
@@ -87,7 +93,8 @@ class ST_Matching():
         top_k = top_k if top_k is not None else self.top_k_candidates
         if search_radius is None:
             search_radius = self.cand_search_radius
-        cands = analyse_geometric_info(_traj, self.base_edges, top_k, search_radius)
+        cands = analyse_geometric_info(_traj, self.base_edges, top_k, search_radius, 
+                                       bias=self.loc_bias, deviation=self.loc_deviaction)
         
         # is_valid
         s, _ = self._is_valid_cands(_traj, cands, res)
@@ -106,7 +113,7 @@ class ST_Matching():
 
         # add details
         if details or check_topo:
-            attrs = ['pid_1', 'step_0_len', 'step_n_len', 'cost', 'd_sht', 'd_euc', 'dist_prob', 
+            attrs = ['pid_1', 'step_0_len', 'step_n_len', 'cost', 'sp_dist', 'euc_dist', 'dist_prob', 
                      'trans_prob', 'observ_prob', 'prob', 'flag', 'status', 'dst', 'src','step_0', 
                      'geometry', 'step_n', 'path', 'epath', 'vpath', 'dist', 'dist_0', 'step_1']
             attrs = [i for i in attrs if i in list(graph)]

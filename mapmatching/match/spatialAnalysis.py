@@ -3,6 +3,7 @@ import numpy as np
 from geopandas import GeoDataFrame
 
 from ..graph import GeoDigraph
+from .status import CANDS_EDGE_TYPE
 from .dir_similarity import cal_dir_prob
 from .candidatesGraph import construct_graph
 
@@ -19,7 +20,7 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
         eps (float, optional): The epsilon value for comparing distances. Defaults to 1e-6.
 
     Returns:
-        GeoDataFrame: The graph GeoDataFrame with additional columns 'd_sht' and 'dist_prob'.
+        GeoDataFrame: The graph GeoDataFrame with additional columns 'sp_dist' and 'dist_prob'.
 
     Example:
         >>> graph = GeoDataFrame([...])  # Graph GeoDataFrame
@@ -28,7 +29,7 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
         >>> print(graph)
 
     Notes:
-        - The 'gt' GeoDataFrame should contain the graph data with required columns including 'flag', 'cost', 'avg_speed', 'epath', 'coords', 'step_0_len', 'step_n_len', 'dist_0', 'd_euc'.
+        - The 'gt' GeoDataFrame should contain the graph data with required columns including 'flag', 'cost', 'avg_speed', 'epath', 'coords', 'step_0_len', 'step_n_len', 'dist_0', 'euc_dist'.
         - The 'net' GeoDigraph should be a network representation used for route planning.
         - The 'max_steps' parameter specifies the maximum number of steps for route planning.
         - The 'max_dist' parameter specifies the maximum distance for route planning.
@@ -39,7 +40,7 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
             - 'avg_speed': The average speed on the shortest path.
             - 'epath': The edge path of the shortest path.
             - 'step_1': The first step of the shortest path.
-            - 'd_sht': The total distance of the shortest path.
+            - 'sp_dist': The total distance of the shortest path.
             - 'dist_prob': The distance probability for the edge.
         - The function modifies the 'gt' GeoDataFrame in place and returns the modified GeoDataFrame.
     """
@@ -57,22 +58,22 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
 
     cal_temporal_prob(gt)
 
-    gt.loc[:, 'd_sht'] = gt.cost + gt.step_0_len + gt.step_n_len 
+    gt.loc[:, 'sp_dist'] = gt.cost + gt.step_0_len + gt.step_n_len 
 
     # OD is on the same edge, but the starting point is relatively ahead of the endpoint
-    flag_1_idxs = gt.query("flag == 1").index
+    flag_1_idxs = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST}").index
     if len(flag_1_idxs):
         gt.loc[flag_1_idxs, ['epath', 'step_1']] = None, None
-        gt.loc[flag_1_idxs, 'd_sht'] = gt.step_0_len + gt.step_n_len - gt.dist_0
+        gt.loc[flag_1_idxs, 'sp_dist'] = gt.step_0_len + gt.step_n_len - gt.dist_0
 
-        idx = gt.query(f"flag == 1 and d_sht < {eps}").index
-        gt.loc[idx, 'd_sht'] = gt.d_euc
+        idx = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST} and sp_dist < {eps}").index
+        gt.loc[idx, 'sp_dist'] = gt.euc_dist
 
     # distance trans prob
-    dist = gt.d_euc / gt.d_sht
-    mask = dist > 1 
-    dist[mask] = 1 / dist[mask]
-    gt.loc[:, 'dist_prob'] = dist
+    dist_prpb = gt.euc_dist / gt.sp_dist
+    mask = dist_prpb > 1 
+    dist_prpb[mask] = 1 / dist_prpb[mask]
+    gt.loc[:, 'dist_prob'] = dist_prpb
 
     return gt
 
@@ -106,7 +107,7 @@ def cal_temporal_prob(gt: GeoDataFrame, eps=1e-6):
     avg_speeds = np.average(speeds, weights=weights, axis=1)
 
     gt.loc[:, 'avg_speed'] = avg_speeds
-    # gt.loc[:, 'eta'] = gt.d_sht.values / avg_speeds
+    # gt.loc[:, 'eta'] = gt.sp_dist.values / avg_speeds
 
     return gt
 

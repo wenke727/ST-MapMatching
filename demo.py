@@ -3,8 +3,8 @@ from mapmatching import build_geograph, ST_Matching
 """step 1: 获取/加载路网"""
 # 方法1：
 # 根据 bbox 从 OSM 下载路网，从头解析获得路网数据
-# net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
-#                      xml_fn="./data/network/LXD.osm.xml", ll=False, n_jobs=16)
+net = build_geograph(bbox=[113.930914, 22.570536, 113.945456, 22.585613],
+                     xml_fn="./data/network/LXD.osm.xml", ll=False, n_jobs=16)
 # 将预处理路网保存为 ckpt
 # net.save_checkpoint('./data/network/LXD_graph.ckpt')
 
