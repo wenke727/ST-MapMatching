@@ -124,7 +124,8 @@ def construct_graph( points,
                             'len_0': 'step_n_len',
                             'seg_1': 'step_0',
                             'len_1': 'step_0_len',
-                            'cost': 'sp_dist'},
+                            # 'cost': 'sp_dist'
+                            },
                      dir_trans = True,
                      gt_keys = ['pid_0', 'eid_0', 'eid_1']
     ):

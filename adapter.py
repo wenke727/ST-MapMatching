@@ -1,69 +1,25 @@
 #%%
+from copy import deepcopy
+import numpy as np
+import pandas as pd
 import geopandas as gpd
 from pathlib import Path
 from shapely import LineString
+from shapely.geometry import MultiLineString
+
 from mapmatching.graph import GeoDigraph
 from mapmatching import ST_Matching
+from mapmatching.utils.logger_helper import logger_dataframe, make_logger
 from mapmatching.geo.io import read_csv_to_geodataframe, to_geojson
 
-# FIXME 4, 14, 420
+logger = make_logger('./debug', console=True)
 
-
-def test_shortest_path(net):
+def test_shortest_path(net, src, dst):
     """ 最短路径测试 """
-    res = net.search(440300024057010, 440300024074011)
+    res = net.search(src, dst)
     df_edges.loc[res['epath']].plot()
 
     return res
-
-df_nodes = gpd.read_file('../MapTools/exp/shezhen_subway_nodes.geojson')
-df_edges = gpd.read_file('../MapTools/exp/shezhen_subway_edges.geojson')
-
-df_edges = df_edges.assign(
-    dist = df_edges['distance'],
-    geometry = df_edges.geometry.fillna(LineString())
-)
-
-net = GeoDigraph(df_edges, df_nodes.set_index('nid'), weight='duration')
-matcher = ST_Matching(net=net, ll=False)
-
-
-# %%
-fn = Path('./data/cells/004.csv')
-traj = read_csv_to_geodataframe(fn)
-if fn.name == '004.csv':
-    traj = traj.loc[[46, 47, 49, 50, 51]] # 44, 45, 
-
-res = matcher.matching(traj, 
-                       top_k=5, dir_trans=True, details=True, plot=True,
-                       simplify=True, debug_in_levels=False)
-
-#%%
-df_edges.loc[res['epath']].to_csv('epath.csv')
-
-# %%
-
-cands = res['details']['cands']
-graph = res['details']['graph']
-# graph.to_csv("./graph.csv")
-graph.loc[3]
-
-
-# %%
-traj = read_csv_to_geodataframe('./data/cells/004.csv')
-to_geojson(traj, './data/cells/004.geojson')
-
-
-
-# %%
-# to_geojson(df_edges, '../MapTools/exp/shezhen_subway_edges_add_eid.geojson')
-
-# %%
-import pandas as pd
-from shapely.wkt import loads
-from shapely.geometry import MultiLineString
-import numpy as np
-from loguru import logger
 
 def process_path_data(df):
     def aggregate_geometries(geom_list):
@@ -96,30 +52,83 @@ def process_path_data(df):
     grouped = df.groupby(['way_id', 'step']).agg({
         'src': 'first',
         'dst': 'last',
-        'eid': lambda x: list(x),
         'src_name': 'first',
         'dst_name': 'last',
-        'dir': lambda x: list(x),
+        'eid': lambda x: list(x),
+        # 'dir': lambda x: list(x),
         'distance': 'sum',
         'duration': 'sum',
         'walking_duration': 'sum',
         'speed': 'mean',
-        # 'geometry': lambda x: MultiLineString(x),
-        'dist': 'sum'
+        'geometry': list,
+        'dist': 'sum',
+        'order': 'first',
     }).reset_index()
 
     # Handle missing values in walking_duration
     grouped['walking_duration'] = grouped['walking_duration'].replace({0: np.nan})
 
     # Combine the grouped data with the special cases
-    result = pd.concat([grouped, special_cases], ignore_index=True).sort_values('step')
+    result = pd.concat([grouped, special_cases], ignore_index=True)\
+               .sort_values(['order', 'step'])\
+               .drop(columns=['step', 'order'])\
+               .reset_index(drop=True)
 
     return result
 
-# Apply the function to the data
+
+df_nodes = gpd.read_file('../MapTools/exp/shezhen_subway_nodes.geojson')
+df_edges = gpd.read_file('../MapTools/exp/shezhen_subway_edges.geojson')
+
+df_edges = df_edges.assign(
+    dist = df_edges['distance'],
+    geometry = df_edges.geometry.fillna(LineString())
+)
+
+net = GeoDigraph(df_edges, df_nodes.set_index('nid'), weight='duration')
+matcher = ST_Matching(net=net, ll=False, loc_deviaction=100)
+
+
+# %%
+# FIXME 4, 14, 420
+id = 420
+fn = Path(f'./data/cells/{id:03d}.csv')
+
+traj = read_csv_to_geodataframe(fn)
+idxs = range(len(traj))
+if fn.name == '004.csv':
+    idxs = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 14, 17, 18, 24, 25, 31, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 50, 51]
+if fn.name == '014.csv':
+    # BUG 最短路问题, 需要增加 7
+    idxs = [0, 1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 28]
+if fn.name == '420.csv':
+    idxs = [0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+traj = traj.loc[idxs] 
+
+
+res = matcher.matching(traj, top_k=8, dir_trans=False, details=True, plot=True, 
+                       search_radius=800, simplify=True, debug_in_levels=False)
+
 processed_data = process_path_data(df_edges.loc[res['epath']])
 
-# Display the first few rows of the processed data
-processed_data.head()
+
+info = deepcopy(res['probs'])
+info.update({'step_0': res['step_0'], 'step_n': res['step_n']})
+print(pd.DataFrame([info]))
+
+processed_data
+
+# %%
+cands = res['details']['cands']
+graph = res['details']['graph']
+steps = res['details']['steps']
+steps
+
+
+
+# %%
+# test_shortest_path(net, 440300024064012, 440300024056016) # 1号线，车公庙 -> 后海
+# test_shortest_path(net, 440300024056014, 440300024056016) # 11号线，车公庙 -> 后海
+# test_shortest_path(net, 440300024064012, 440300024056014) # 1号线，车公庙 -> 11号线，车公庙
 
 # %%

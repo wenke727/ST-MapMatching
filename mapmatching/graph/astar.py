@@ -21,7 +21,7 @@ def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, ll=True):
     else:
         _len = nodes[src]['geometry'].distance(nodes[dst]['geometry'])
     
-    return _len
+    return _len / 2
 
 
 class PathPlanning:
@@ -63,16 +63,16 @@ class Astar(PathPlanning):
                  max_steps: int = 2000, max_dist: int = 10000, level='debug', ll=True):
         super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level, ll)
         
-    def search(self, src, dst, max_steps=None, max_dist=None, weight='cost'):
+    def search(self, src, dst, max_steps=None, max_dist=None, weight='weight'):
         if src == dst:
-            return {'status': 0, 'vpath': [src], 'cost': 0}
+            return {'status': 0, 'vpath': [src], 'weight': 0}
         
         if (src, dst) in self.search_memo:
             res = self.search_memo[(src, dst)]
             return res
         
         if not self.has_edge(src, dst):
-            return {"status": 1, 'vpath': [], 'cost': np.inf} 
+            return {"status": 1, 'vpath': [], 'weight': np.inf} 
 
         # init
         queue = [(0, src)]
@@ -109,13 +109,13 @@ class Astar(PathPlanning):
 
         # abnormal situation
         if cur != dst:
-            res = {"status": 2, 'vpath': [], 'cost': np.inf} 
+            res = {"status": 2, 'vpath': [], 'weight': np.inf} 
             self.search_memo[(src, dst)] = res
             return res
 
         # reconstruct path
         path = self.reconstruct_path(dst, came_from)
-        res = {'status': 0, 'vpath': path, 'cost': distance[dst]}
+        res = {'status': 0, 'vpath': path, 'weight': distance[dst]}
         self.search_memo[(src, dst)] = res
 
         return res

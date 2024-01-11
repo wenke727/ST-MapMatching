@@ -46,7 +46,7 @@ class ST_Matching():
                  console=True,
                  ll=False,
                  loc_bias=0,
-                 loc_deviaction=200,
+                 loc_deviaction=100,
                  ):
         self.net = net
         edge_attrs = ['eid', 'src', 'dst', 'way_id', 'dir', 'dist', 'speed', 'geometry']

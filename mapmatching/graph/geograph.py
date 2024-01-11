@@ -31,7 +31,7 @@ class GeoDigraph(Digraph):
             return
         
         if not ll:
-            self.to_proj()
+            self.to_proj(refresh_distance=True)
         super().__init__(df_edges[['src', 'dst', weight]].sort_index().values, 
                              df_nodes.to_dict(orient='index'), *args, **kwargs)
         self.init_searcher()
@@ -57,12 +57,15 @@ class GeoDigraph(Digraph):
             route['epath'] = epath
             if epath is not None:
                 _df = self.get_edge(epath)
-                if _df.dist.sum() == 0:
+                _sum = _df.dist.sum()
+                route['dist'] = _sum
+                if _sum == 0:
                     route['avg_speed'] = np.average(_df.speed.values)
                 else:
                     route['avg_speed'] = np.average(_df.speed.values, weights=_df.dist.values)
             else:
                 route['avg_speed'] = 0
+                route['dist'] = 0
                 
         if coords and 'coords' not in route:
             lst = route['epath']
@@ -310,7 +313,9 @@ class GeoDigraph(Digraph):
 
         self.df_edges.to_crs(self.crs_prj, inplace=True)
         if refresh_distance:
-            self.df_edges.loc[:, 'dist'] = self.df_edges.length
+            mask = self.df_edges.geometry.apply(lambda x: not x.is_empty)
+            self.df_edges.loc[mask, 'dist'] = self.df_edges[mask].length
+            
             mask = self.df_edges.loc[:, 'dist'] == 0
             self.df_edges.loc[mask, 'dist'] = eps
             

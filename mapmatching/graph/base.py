@@ -74,20 +74,20 @@ class Digraph:
     def __str__(self):
         return ""
 
-    def add_edge(self, start, end, length=None):
+    def add_edge(self, start, end, weight=None):
         for p in [start, end]:
             for g in [self.graph, self.graph_r]:
                 if p in g:
                     continue
                 g[p] = {}
             
-        self.graph[start][end] = {"eid": self.max_eid, "cost": length}
-        self.graph_r[end][start] = {"eid": self.max_eid, "cost": length}
+        self.graph[start][end] = {"eid": self.max_eid, "weight": weight}
+        self.graph_r[end][start] = {"eid": self.max_eid, "weight": weight}
         self.eid_2_od[self.max_eid] = (start, end)
         self.max_eid += 1
 
-        if length is not None:
-            self.edges[(start, end)] = length
+        if weight is not None:
+            self.edges[(start, end)] = weight
             
         pass
 

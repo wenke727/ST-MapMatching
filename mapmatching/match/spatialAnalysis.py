@@ -50,15 +50,16 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
         warnings.warn("Empty graph layer")
         return gt
 
-    sp_attrs = ['cost', "avg_speed", 'epath', 'coords']
-    gt_sp_attrs = ['cost', "avg_speed", 'epath', 'step_1']
+    sp_attrs = ['dist', "avg_speed", 'epath', 'coords', 'weight']
+    gt_sp_attrs = ['dist', "avg_speed", 'epath', 'step_1', 'weight']
     rout_planning = lambda x: net.search(x.dst, x.src, max_steps, max_dist)
     paths = gt.apply(rout_planning, axis=1, result_type='expand')[sp_attrs]
     gt.loc[:, gt_sp_attrs] = paths.values
 
     cal_temporal_prob(gt)
-
-    gt.loc[:, 'sp_dist'] = gt.cost + gt.step_0_len + gt.step_n_len 
+    
+    assert not gt.dist.hasnans, "check distance"
+    gt.loc[:, 'sp_dist'] = gt.dist.fillna(0) + gt.step_0_len + gt.step_n_len 
 
     # OD is on the same edge, but the starting point is relatively ahead of the endpoint
     flag_1_idxs = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST}").index
@@ -101,7 +102,7 @@ def cal_temporal_prob(gt: GeoDataFrame, eps=1e-6):
         - The function modifies the 'gt' GeoDataFrame in place and returns the modified GeoDataFrame.
     """
     speeds = gt[['speed_0', 'speed_1', 'avg_speed']].values
-    weights = gt[['step_0_len', 'step_n_len', 'cost']].values
+    weights = gt[['step_0_len', 'step_n_len', 'dist']].values
     weights[weights == np.inf] = eps
     weights[weights == 0] = eps
     avg_speeds = np.average(speeds, weights=weights, axis=1)
