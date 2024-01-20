@@ -4,7 +4,8 @@ from ..geo.coord.coordTransfrom_shp import coord_transfer
 from ..geo.ops.simplify import simplify_trajetory_points
 
 
-def load_points(fn, simplify: bool = False, dp_thres: int = None, crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
+def load_points(fn, simplify: bool = False, dp_thres: int = None, 
+                crs: int = None, in_sys: str = 'wgs', out_sys: str = 'wgs'):
     # BUG 重复节点需删除
     traj = gpd.read_file(fn, encoding='utf-8')
     if crs is not None:

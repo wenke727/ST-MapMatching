@@ -189,7 +189,7 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
         path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
 
     ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
-    ax.legend(loc=1)
+    ax.legend(loc='best')
 
     if not info:
         return fig, ax

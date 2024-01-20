@@ -17,6 +17,23 @@
 - [ ] resmaple 使用矢量算法
 - [ ] `GeoGraph` aligned to `networkx` :star:
 
+## [2024-01-11]
+### changed
+- graph\astar
+calculate_nodes_dist: 调整启发的系数
+Astar: 边的权重存储键值从 cost 改为 weight
+
+- graph\base.py
+边的权重存储键值从 cost 改为 weight
+
+- graph\geograph.py
+to_proj: 增加 is_empty 元素的mask，不将其具有惩罚性质的数值置零
+特别需要注意：计算长度数值的方式需全局统一，如在某个特定的投影坐标下
+TODO： _df.dist.sum() -> _df.dist.fillna(0).sum()
+
+- match\spatialAnalysis.py
+将距离的字段从 cost -> dist
+
 ## [V2.0.8] - 2023-12-22
 
 ### Added

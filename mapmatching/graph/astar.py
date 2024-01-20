@@ -4,24 +4,31 @@ from loguru import logger
 from collections import deque
 from haversine import haversine, Unit
 
+class NodeNotFoundError(Exception):
+    pass
 
-def calculate_nodes_dist(nodes:dict, src:int, dst:int, memo:dict={}, ll=True):
-    assert src in nodes and dst in nodes, "Check the input o and d."
+def estimate_nodes_weight(nodes:dict, src:int, dst:int, memo:dict={}, factor=2, ll=True):
     if (src, dst) in memo:
         return memo[(src, dst)]
-    
+
+    if src not in nodes or dst not in nodes:
+        raise NodeNotFoundError(f"One or both nodes not found: src={src}, dst={dst}")
+
     if ll:
         _src = nodes[src]
         _dst = nodes[dst]
-        _len = haversine(
-            (_src['y'], _src['x']), 
-            (_dst['y'], _dst['x']), 
+        distance = haversine(
+            (_src['y'], _src['x']),
+            (_dst['y'], _dst['x']),
             unit=Unit.METERS
         )
     else:
-        _len = nodes[src]['geometry'].distance(nodes[dst]['geometry'])
+        distance = nodes[src]['geometry'].distance(nodes[dst]['geometry'])
     
-    return _len / 2
+    distance = distance / factor
+    memo[(src, dst)] = distance
+    
+    return distance
 
 
 class PathPlanning:
@@ -63,7 +70,7 @@ class Astar(PathPlanning):
                  max_steps: int = 2000, max_dist: int = 10000, level='debug', ll=True):
         super().__init__(graph, nodes, search_memo, nodes_dist_memo, max_steps, max_dist, level, ll)
         
-    def search(self, src, dst, max_steps=None, max_dist=None, weight='weight'):
+    def search(self, src, dst, max_steps=None, max_dist=None, weight='weight', h_factor=30):
         if src == dst:
             return {'status': 0, 'vpath': [src], 'weight': 0}
         
@@ -101,7 +108,8 @@ class Astar(PathPlanning):
                 if distance[nxt] > max_dist:
                     continue
                 
-                _h = calculate_nodes_dist(self.nodes, dst, nxt, self.nodes_dist_memo, self.ll)
+                _h = estimate_nodes_weight(
+                    self.nodes, dst, nxt, self.nodes_dist_memo, h_factor, self.ll)
                 heapq.heappush(queue, (new_cost + _h, nxt) )
                 came_from[nxt] = cur
 

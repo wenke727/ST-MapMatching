@@ -6,6 +6,8 @@ import geopandas as gpd
 from pathlib import Path
 from shapely import LineString
 from shapely.geometry import MultiLineString
+from shapely.ops import linemerge
+from shapely.geometry import LineString, MultiLineString
 
 from mapmatching.graph import GeoDigraph
 from mapmatching import ST_Matching
@@ -14,18 +16,43 @@ from mapmatching.geo.io import read_csv_to_geodataframe, to_geojson
 
 logger = make_logger('./debug', console=True)
 
-def test_shortest_path(net, src, dst):
+def _test_shortest_path(net, src, dst):
     """ 最短路径测试 """
     res = net.search(src, dst)
     df_edges.loc[res['epath']].plot()
 
     return res
 
-def process_path_data(df):
-    def aggregate_geometries(geom_list):
-        # lines = [loads(geom) for geom in geom_list if geom != 'LINESTRING EMPTY']
-        return MultiLineString(geom_list) if geom_list else 'LINESTRING EMPTY'
+def _merge_linestrings(linestrings, to_multilinestring=False):
+    """
+    Merges a list of LineString objects into a MultiLineString or a single LineString
+    using Shapely's linemerge function.
+    
+    Args:
+    - linestrings (list): A list of LineString objects.
+    - to_multilinestring (bool): If True, force output to be a MultiLineString.
 
+    Returns:
+    - LineString/MultiLineString: The merged LineString or MultiLineString object.
+    """
+
+    # Filter out any 'LINESTRING EMPTY' or equivalent from the list
+    valid_linestrings = [ls for ls in linestrings if not ls.is_empty]
+
+    # If the input is empty or all linestrings are empty, return an empty LineString
+    if not valid_linestrings:
+        return LineString()
+
+    # Use linemerge to combine the linestrings
+    merged = linemerge(valid_linestrings)
+
+    # If to_multilinestring is True and the merged result is not a MultiLineString, convert it
+    if to_multilinestring and not isinstance(merged, MultiLineString):
+        return MultiLineString([merged])
+    
+    return merged
+
+def _process_path_data(df):
     df = df.copy()
     special_cases_mask = df['dst_name'].isin(['exchange', 'inner_link'])
     
@@ -55,13 +82,12 @@ def process_path_data(df):
         'src_name': 'first',
         'dst_name': 'last',
         'eid': lambda x: list(x),
-        # 'dir': lambda x: list(x),
-        'distance': 'sum',
+        'dist': 'sum',
+        # 'distance': 'sum',
         'duration': 'sum',
         'walking_duration': 'sum',
         'speed': 'mean',
-        'geometry': list,
-        'dist': 'sum',
+        'geometry': _merge_linestrings,
         'order': 'first',
     }).reset_index()
 
@@ -74,7 +100,7 @@ def process_path_data(df):
                .drop(columns=['step', 'order'])\
                .reset_index(drop=True)
 
-    return result
+    return gpd.GeoDataFrame(result)
 
 
 df_nodes = gpd.read_file('../MapTools/exp/shezhen_subway_nodes.geojson')
@@ -91,7 +117,7 @@ matcher = ST_Matching(net=net, ll=False, loc_deviaction=100)
 
 # %%
 # FIXME 4, 14, 420
-id = 420
+id = 4
 fn = Path(f'./data/cells/{id:03d}.csv')
 
 traj = read_csv_to_geodataframe(fn)
@@ -99,24 +125,31 @@ idxs = range(len(traj))
 if fn.name == '004.csv':
     idxs = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 14, 17, 18, 24, 25, 31, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 50, 51]
 if fn.name == '014.csv':
-    # BUG 最短路问题, 需要增加 7
     idxs = [0, 1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 28]
 if fn.name == '420.csv':
     idxs = [0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 24, 25, 26, 27, 28, 29, 30, 31, 32]
 traj = traj.loc[idxs] 
 
 
-res = matcher.matching(traj, top_k=8, dir_trans=False, details=True, plot=True, 
-                       search_radius=800, simplify=True, debug_in_levels=False)
+res = matcher.matching(traj, top_k=6, dir_trans=False, details=True, plot=True, tolerance=500,
+                       search_radius=500, simplify=True, debug_in_levels=False)
 
-processed_data = process_path_data(df_edges.loc[res['epath']])
+# 裁剪首尾段
+df_path = df_edges.loc[res['epath']]
+eps = 0.1
+start = 0 if res['step_0'] < eps else 1
+end = -1 if res['step_n'] < eps else len(res['epath'])
+df_path = df_path.iloc[start: end]
+
+df_combined_path = _process_path_data(df_path)
 
 
 info = deepcopy(res['probs'])
 info.update({'step_0': res['step_0'], 'step_n': res['step_n']})
 print(pd.DataFrame([info]))
 
-processed_data
+aoi = ['way_id', 'src', 'dst', 'src_name', 'dst_name', 'eid', 'dist', 'duration', 'speed']
+df_combined_path[aoi]
 
 # %%
 cands = res['details']['cands']
@@ -124,11 +157,7 @@ graph = res['details']['graph']
 steps = res['details']['steps']
 steps
 
-
-
-# %%
-# test_shortest_path(net, 440300024064012, 440300024056016) # 1号线，车公庙 -> 后海
-# test_shortest_path(net, 440300024056014, 440300024056016) # 11号线，车公庙 -> 后海
-# test_shortest_path(net, 440300024064012, 440300024056014) # 1号线，车公庙 -> 11号线，车公庙
+#%%
+traj
 
 # %%

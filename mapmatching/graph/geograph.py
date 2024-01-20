@@ -57,7 +57,7 @@ class GeoDigraph(Digraph):
             route['epath'] = epath
             if epath is not None:
                 _df = self.get_edge(epath)
-                _sum = _df.dist.sum()
+                _sum = _df.dist.fillna(0).sum()
                 route['dist'] = _sum
                 if _sum == 0:
                     route['avg_speed'] = np.average(_df.speed.values)

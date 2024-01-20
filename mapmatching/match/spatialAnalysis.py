@@ -60,6 +60,8 @@ def cal_dist_prob(gt: GeoDataFrame, net: GeoDigraph, max_steps: int = 2000, max_
     
     assert not gt.dist.hasnans, "check distance"
     gt.loc[:, 'sp_dist'] = gt.dist.fillna(0) + gt.step_0_len + gt.step_n_len 
+    inf_mask = gt['weight'] != gt['weight']
+    gt[inf_mask, 'sp_dist'] = np.inf
 
     # OD is on the same edge, but the starting point is relatively ahead of the endpoint
     flag_1_idxs = gt.query(f"flag == {CANDS_EDGE_TYPE.SAME_SRC_FIRST}").index
