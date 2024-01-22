@@ -331,7 +331,7 @@ class GeoDigraph(Digraph):
     def epsg(self):
         return self.df_edges.crs.to_epsg()
 
-    def add_edge_map(self, ax, crs=4326, *args, **kwargs):
+    def add_edge_map(self, ax, crs=4326, show_node=True, *args, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -342,10 +342,17 @@ class GeoDigraph(Digraph):
             if not hasattr(self, "df_edges_ll"):
                 self.df_edges_ll = self.df_edges.to_crs(self.crs_wgs)
             df_edges = self.df_edges_ll
+            if show_node and not hasattr(self, 'df_nodes_ll'):
+                self.df_nodes_ll = self.df_nodes.to_crs(self.crs_wgs)
+                df_nodes = self.df_nodes_ll
         else:
             df_edges = self.df_edges
+            if show_node :
+                df_nodes = self.df_nodes
         df_edges = df_edges.sjoin(zones, how="inner", predicate='intersects')
         df_edges.plot(ax=ax, *args, **kwargs)
+        if show_node:
+            df_nodes.plot(ax=ax, color='black', facecolor='w')
 
         return ax
 

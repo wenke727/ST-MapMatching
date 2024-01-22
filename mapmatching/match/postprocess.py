@@ -105,9 +105,13 @@ def transform_mathching_res_2_path(res: dict, net: GeoDigraph, ori_crs: bool=Tru
 
     _len = len(res['epath']) 
     if _len == 1:
-        path.loc[0, 'dist'] *= res['step_n'] - res['step_0']
-        path.loc[0, 'geometry'] = shapely.ops.substring(
-            path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
+        try:
+            path.loc[0, 'dist'] *= res['step_n'] - res['step_0']
+            path.loc[0, 'geometry'] = shapely.ops.substring(
+                path.iloc[0].geometry, res['step_0'], res['step_n'], normalized=True)
+        except:
+            path.loc[0, 'dist'] = 0
+
     else:
         path.loc[0, 'dist'] *= 1 - res['step_0']
         path.loc[0, 'geometry'] = shapely.ops.substring(

@@ -163,6 +163,7 @@ class ST_Matching():
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
+            info['probs'] = {}
             edges_box = box(*self.base_edges.total_bounds)
             traj_box = box(*traj.total_bounds)
             flag = edges_box.contains(traj_box)
@@ -181,6 +182,7 @@ class ST_Matching():
             res = {'epath': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
             info.update(res)
             info['status'] = STATUS.ONE_POINT
+            info['probs'] = {}
             
             return False, res
         
