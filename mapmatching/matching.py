@@ -104,7 +104,7 @@ class ST_Matching():
         # spatial analysis
         res['probs'] = {}
         rList, graph = self.spatial_analysis(_traj, cands, dir_trans, beam_search, metric=res['probs'])
-        match_res, steps = get_path(rList, graph, cands, metric=res['probs'])
+        match_res, steps = get_path(rList, graph, cands, metric=res['probs'], prob_thres=.6)
         
         if 'status' in res['probs']:
             res['status'] = res['probs']['status']

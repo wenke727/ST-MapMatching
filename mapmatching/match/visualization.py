@@ -160,7 +160,7 @@ def debug_traj_matching(traj: gpd.GeoDataFrame, graph: gpd.GeoDataFrame, net: Ge
     """
     if 'geometry' not in graph:
         graph = get_shortest_geometry(graph, 'geometry')
-        graph = gpd.GeoDataFrame(graph, crs=net.crs_prj)
+        graph = gpd.GeoDataFrame(graph, crs=net.utm_crs)
         graph = graph.set_geometry('geometry')
 
     if level is None:

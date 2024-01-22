@@ -24,8 +24,8 @@ class GeoDigraph(Digraph):
         self.nodes_dist_memo = {}
         self.ll = ll
 
-        self.crs_prj = crs_prj
-        self.crs_wgs = crs_wgs
+        self.utm_crs = crs_prj
+        self.wgs_crs = crs_wgs
 
         if df_edges is None or df_nodes is None:
             return
@@ -289,7 +289,7 @@ class GeoDigraph(Digraph):
     """ coord system """
     def align_crs(self, gdf):
         assert gdf.crs is not None
-        assert self.crs_prj is not None
+        assert self.utm_crs is not None
         
         gdf.to_crs(self.epsg, inplace=True)
 
@@ -297,21 +297,21 @@ class GeoDigraph(Digraph):
 
     def convert_to_wgs(self, gdf):
         assert gdf.crs is not None
-        gdf.to_crs(self.crs_wgs, inplace=True)
+        gdf.to_crs(self.wgs_crs, inplace=True)
 
         return gdf
 
     def to_ll(self):
-        self.df_edges.to_crs(self.crs_wgs, inplace=True)
-        self.df_nodes.to_crs(self.crs_wgs, inplace=True)
+        self.df_edges.to_crs(self.wgs_crs, inplace=True)
+        self.df_nodes.to_crs(self.wgs_crs, inplace=True)
         
         return True
 
     def to_proj(self, refresh_distance=False, eps=1e-5):
-        if self.crs_prj is None:
-            self.crs_prj = self.df_edges.estimate_utm_crs().to_epsg()
+        if self.utm_crs is None:
+            self.utm_crs = self.df_edges.estimate_utm_crs().to_epsg()
 
-        self.df_edges.to_crs(self.crs_prj, inplace=True)
+        self.df_edges.to_crs(self.utm_crs, inplace=True)
         if refresh_distance:
             mask = self.df_edges.geometry.apply(lambda x: not x.is_empty)
             self.df_edges.loc[mask, 'dist'] = self.df_edges[mask].length
@@ -319,7 +319,7 @@ class GeoDigraph(Digraph):
             mask = self.df_edges.loc[:, 'dist'] == 0
             self.df_edges.loc[mask, 'dist'] = eps
             
-        self.df_nodes.to_crs(self.crs_prj, inplace=True)
+        self.df_nodes.to_crs(self.utm_crs, inplace=True)
 
         return True
 
@@ -331,7 +331,7 @@ class GeoDigraph(Digraph):
     def epsg(self):
         return self.df_edges.crs.to_epsg()
 
-    def add_edge_map(self, ax, crs=4326, show_node=True, *args, **kwargs):
+    def add_edge_map(self, ax, crs=4326, show_node=False, *args, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -340,10 +340,11 @@ class GeoDigraph(Digraph):
 
         if crs == 4326:
             if not hasattr(self, "df_edges_ll"):
-                self.df_edges_ll = self.df_edges.to_crs(self.crs_wgs)
+                self.df_edges_ll = self.df_edges.to_crs(self.wgs_crs)
             df_edges = self.df_edges_ll
-            if show_node and not hasattr(self, 'df_nodes_ll'):
-                self.df_nodes_ll = self.df_nodes.to_crs(self.crs_wgs)
+            if show_node:
+                if not hasattr(self, 'df_nodes_ll'):
+                    self.df_nodes_ll = self.df_nodes.to_crs(self.wgs_crs)
                 df_nodes = self.df_nodes_ll
         else:
             df_edges = self.df_edges
