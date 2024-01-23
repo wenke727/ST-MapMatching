@@ -30,14 +30,13 @@ class Timer:
         return np.array(self.times).cumsum().tolist()
 
 
-def timeit(func):
+def timeit(func, level='trace'):
     def inner(*args, **kwargs):
         start = time.time()
         res = func(*args, **kwargs)
         end = time.time()
         _log = f"{func.__name__}, cost: {(end - start) * 1000: .2f} ms"
-        # print(_log)
-        logger.info(_log)
+        getattr(logger, level)(_log)
         
         return res
         

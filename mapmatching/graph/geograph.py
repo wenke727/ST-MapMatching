@@ -87,7 +87,7 @@ class GeoDigraph(Digraph):
     def get_edge(self, eid, attrs=None, reset_index=False):
         """Get edge by eid [0, n]"""
         res = self._get_feature('df_edges', eid, attrs, reset_index)
-        logger.debug(f"\n{res}")
+        # logger.debug(f"\n{res}")
 
         return res
 

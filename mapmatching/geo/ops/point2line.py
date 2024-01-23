@@ -8,7 +8,7 @@ from geopandas import GeoDataFrame
 from .distance import cal_coords_seq_distance, cal_pointwise_distance_geoseries
 
 
-@numba.jit
+@numba.jit(nopython=True)
 def get_first_index(arr, val):
     """有效地返回数组中第一个值满足条件的索引
     Refs: https://blog.csdn.net/weixin_39707612/article/details/111457329;

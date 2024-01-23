@@ -55,7 +55,7 @@ class ST_Matching():
         self.base_edges.sindex
 
         self.crs_wgs = crs_wgs
-        self.crs_prj = crs_prj
+        self.utm_crs = self.net.utm_crs
         self.ll = ll
         
         self.loc_bias = loc_bias
@@ -104,7 +104,7 @@ class ST_Matching():
         # spatial analysis
         res['probs'] = {}
         rList, graph = self.spatial_analysis(_traj, cands, dir_trans, beam_search, metric=res['probs'])
-        match_res, steps = get_path(rList, graph, cands, metric=res['probs'], prob_thres=.6)
+        match_res, steps = get_path(rList, graph, cands, metric=res['probs'], prob_thres=self.prob_thres)
         
         if 'status' in res['probs']:
             res['status'] = res['probs']['status']
@@ -247,7 +247,7 @@ class ST_Matching():
 
         return debug_traj_matching(traj, graph, self.net, level, debug_folder)
 
-    def plot_result(self, traj, info):
+    def plot_result(self, traj, info, filter_key='prob'):
         info = deepcopy(info)
         if info['status'] == 3:
             path = None
@@ -256,7 +256,9 @@ class ST_Matching():
         else:
             path = self.transform_res_2_path(info)
         
-        fig, ax = plot_matching_result(traj, path, self.net)
+        if filter_key:
+            info = {k:v for k, v in info.items() if 'prob' in k}
+        fig, ax = plot_matching_result(traj, path, self.net, info)
 
         return fig, ax
 

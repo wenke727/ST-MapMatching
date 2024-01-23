@@ -207,7 +207,7 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
     
     for key, val in info.items():
         if 'prob' in key:
-            _str = f"{key}: {val * 100: .2f} %"
+            _str = f"{key}: {val * 100: .1f} %"
         else:
             if isinstance(val, float):
                 _str = f"{key}: {val: .0f}"
@@ -216,7 +216,8 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
         text.append(_str)
 
     x0, x1, y0, y1 = ax.axis()
-    ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text))
+    ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text),
+            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
 
     return fig, ax
 
