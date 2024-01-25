@@ -189,35 +189,33 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
         path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
 
     ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)
-    ax.legend(loc='best')
-
-    if not info:
-        return fig, ax
 
     # append information
-    for att in ['epath', "step_0", "step_n", 'details']:
-        if att not in info:
-            continue
-        info.pop(att)
+    if info:
+        for att in ['epath', "step_0", "step_n", 'details']:
+            if att not in info:
+                continue
+            info.pop(att)
 
-    text = []
-    if "probs" in info:
-        probs = info.pop('probs')
-        info.update(probs)
-    
-    for key, val in info.items():
-        if 'prob' in key:
-            _str = f"{key}: {val * 100: .1f} %"
-        else:
-            if isinstance(val, float):
-                _str = f"{key}: {val: .0f}"
+        text = []
+        if "probs" in info:
+            probs = info.pop('probs')
+            info.update(probs)
+        
+        for key, val in info.items():
+            if 'prob' in key:
+                _str = f"{key}: {val * 100: .1f} %"
             else:
-                _str = f"{key}: {val}"
-        text.append(_str)
+                if isinstance(val, float):
+                    _str = f"{key}: {val: .0f}"
+                else:
+                    _str = f"{key}: {val}"
+            text.append(_str)
 
-    x0, x1, y0, y1 = ax.axis()
-    ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text),
-            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
+        x0, x1, y0, y1 = ax.axis()
+        ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text),
+                bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
+    ax.legend(loc='best')
 
     return fig, ax
 

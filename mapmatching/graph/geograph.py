@@ -331,7 +331,7 @@ class GeoDigraph(Digraph):
     def epsg(self):
         return self.df_edges.crs.to_epsg()
 
-    def add_edge_map(self, ax, crs=4326, show_node=False, *args, **kwargs):
+    def add_edge_map(self, ax, crs=4326, show_node=True, *args, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -353,7 +353,7 @@ class GeoDigraph(Digraph):
         df_edges = df_edges.sjoin(zones, how="inner", predicate='intersects')
         df_edges.plot(ax=ax, *args, **kwargs)
         if show_node:
-            df_nodes.plot(ax=ax, color='black', facecolor='w')
+            df_nodes.plot(ax=ax, *args, **kwargs, facecolor='white', markersize=6)
 
         return ax
 
