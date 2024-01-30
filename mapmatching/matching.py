@@ -163,7 +163,7 @@ class ST_Matching():
         # -> status, route
         if cands is None:
             info['status'] = STATUS.NO_CANDIDATES
-            info['probs'] = {}
+            info['probs'] = {'norm_prob': 0}
             edges_box = box(*self.base_edges.total_bounds)
             traj_box = box(*traj.total_bounds)
             flag = edges_box.contains(traj_box)
@@ -182,7 +182,7 @@ class ST_Matching():
             res = {'epath': eid, 'step_0': [coord, [coord[0] + eps, coord[1] + eps]]}
             info.update(res)
             info['status'] = STATUS.ONE_POINT
-            info['probs'] = {}
+            info['probs'] = {'norm_prob': 0}
             
             return False, res
         
@@ -247,7 +247,7 @@ class ST_Matching():
 
         return debug_traj_matching(traj, graph, self.net, level, debug_folder)
 
-    def plot_result(self, traj, info, filter_key='prob'):
+    def plot_result(self, traj, info, filter_key='prob', legend=True):
         info = deepcopy(info)
         if info['status'] == 3:
             path = None
@@ -258,7 +258,7 @@ class ST_Matching():
         
         if filter_key:
             info = {k:v for k, v in info.items() if 'prob' in k}
-        fig, ax = plot_matching_result(traj, path, self.net, info)
+        fig, ax = plot_matching_result(traj, path, self.net, info, legend=legend)
 
         return fig, ax
 

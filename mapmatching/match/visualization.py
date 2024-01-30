@@ -175,12 +175,14 @@ def debug_traj_matching(traj: gpd.GeoDataFrame, graph: gpd.GeoDataFrame, net: Ge
     return img
 
 def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, net: GeoDigraph, 
-                         info: dict = None, column=None, categorical=True):
+                         info: dict = None, column=None, categorical=True, legend=True):
     traj_crs = traj_points.crs.to_epsg()
-    if traj_crs != path.crs.to_epsg():
+    if path is not None and traj_crs != path.crs.to_epsg():
         path = path.to_crs(traj_crs)
+        _df = traj_points
+    else:
+        _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
 
-    _df = gpd.GeoDataFrame(pd.concat([traj_points, path]))
     fig, ax = plot_geodata(_df, figsize=(18, 12), tile_alpha=.7, reset_extent=False, alpha=0)
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
@@ -215,7 +217,8 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
         x0, x1, y0, y1 = ax.axis()
         ax.text(x0 + (x1- x0)/50, y0 + (y1 - y0)/50, "\n".join(text),
                 bbox=dict(facecolor='white', alpha=0.5, edgecolor='none'))
-    ax.legend(loc='best')
+    if legend:
+        ax.legend(loc='best')
 
     return fig, ax
 

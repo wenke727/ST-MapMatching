@@ -120,7 +120,7 @@ def find_matched_sequence(cands, gt, net, dir_trans=True, mode='*', prune_factor
     for idx, lvl in enumerate(layer_ids[:-1]):
         df_layer = gt.query(f"pid_0 == @lvl and eid_0 in @prev_states")
         if df_layer.empty:
-            print(f"Matching traj break at idx: {idx}, level:  {lvl}")
+            logger.warning(f"Matching traj break at idx: {idx}, level:  {lvl}")
             df_layer = gt.query(f"pid_0 == @lvl")
             prev_probs = 0 if mode == '+' else 1
         else:

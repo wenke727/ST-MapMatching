@@ -351,6 +351,9 @@ class GeoDigraph(Digraph):
             if show_node :
                 df_nodes = self.df_nodes
         df_edges = df_edges.sjoin(zones, how="inner", predicate='intersects')
+        if df_edges.empty:
+            return ax
+        
         df_edges.plot(ax=ax, *args, **kwargs)
         if show_node:
             df_nodes.plot(ax=ax, *args, **kwargs, facecolor='white', markersize=6)
