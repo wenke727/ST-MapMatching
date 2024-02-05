@@ -81,7 +81,7 @@ def plot_matching_debug_pair(traj, edges, item, level, src, dst, ax=None, maximu
     # path
     edges.iloc[[0]].plot(ax=ax, linestyle='--', alpha=.7, label=f'{src}', color='green', linewidth=5)
     edges.iloc[[1]].plot(ax=ax, linestyle=':', alpha=.7, label=f'{dst}', color='blue', linewidth=5)
-    gpd.GeoDataFrame( item ).T.plot(ax=ax, color='red', label='Path', alpha=.6, linewidth=2)
+    gpd.GeoDataFrame(item).T.set_geometry('geometry').plot(ax=ax, color='red', label='Path', alpha=.6, linewidth=2)
 
     # aux
     prob = item.observ_prob * item.trans_prob
@@ -163,6 +163,9 @@ def debug_traj_matching(traj: gpd.GeoDataFrame, graph: gpd.GeoDataFrame, net: Ge
         graph = gpd.GeoDataFrame(graph, crs=net.utm_crs)
         graph = graph.set_geometry('geometry')
 
+    traj = traj.to_crs(4326)
+    graph = graph.to_crs(4326)
+    
     if level is None:
         layer_ids = graph.index.get_level_values(0).unique().sort_values().values
     else:
@@ -187,7 +190,7 @@ def plot_matching_result(traj_points: gpd.GeoDataFrame, path: gpd.GeoDataFrame, 
 
     traj_points.plot(ax=ax, label='Trajectory', zorder=2, alpha=.5, color='b')
     traj_points.iloc[[0]].plot(ax=ax, label='Source', zorder=4, marker="*", color='orange')
-    if path is not None:
+    if isinstance(path, gpd.GeoDataFrame) and not path.empty:
         path.plot(ax=ax, color='r', label='Path', zorder=3, linewidth=2, alpha=.6)
 
     ax = net.add_edge_map(ax, traj_crs, color='black', label='roads', alpha=.3, zorder=2, linewidth=1)

@@ -113,14 +113,15 @@ def transform_mathching_res_2_path(res: dict, net: GeoDigraph, ori_crs: bool=Tru
             path.loc[0, 'dist'] = 0
 
     else:
-        path.loc[0, 'dist'] *= 1 - res['step_0']
-        path.loc[0, 'geometry'] = shapely.ops.substring(
-            path.iloc[0].geometry, res['step_0'], 1, normalized=True)
-
-        path.loc[_len - 1, 'dist'] *= res['step_n']
-        path.loc[_len - 1, 'geometry'] = shapely.ops.substring(
-            path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
-    
+        if not path.iloc[0].geometry.is_empty:
+            path.loc[0, 'dist'] *= 1 - res['step_0']
+            path.loc[0, 'geometry'] = shapely.ops.substring(
+                path.iloc[0].geometry, res['step_0'], 1, normalized=True)
+        if not path.iloc[-1].geometry.is_empty:
+            path.loc[_len - 1, 'dist'] *= res['step_n']
+            path.loc[_len - 1, 'geometry'] = shapely.ops.substring(
+                path.iloc[-1].geometry, 0, res['step_n'], normalized=True)
+        
     path = path[~path.geometry.is_empty]
     if ori_crs:
         path = path.to_crs(res['ori_crs'])

@@ -34,6 +34,9 @@ def parallel_process(func, queue, pbar_switch=False, desc='Parallel processing',
     pool.close()
     pool.join() 
     res = [r.get() for r in res]
+    
+    # for id, params in enumerate(queue):
+    #     res.append(func(*params))
 
     return res
 
